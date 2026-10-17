@@ -55,6 +55,10 @@ The full recipe runs 3000 rollouts and starts with an AIME eval that takes hours
 
     ./smoke.sh
 
+`smoke.sh` keeps the recipe's batch: 256 samples of up to 8k tokens, which overflow SGLang's KV cache and take 40+ minutes per rollout. `smoke-small.sh` runs 64 samples of up to 2k tokens with more memory for the cache, for a few minutes per rollout:
+
+    ./smoke-small.sh
+
 The launcher starts a local Ray cluster. Before that it kills any running `sglang`, `ray` and `redis` processes, including ones serving from other envs.
 
 The Ray dashboard listens only on the Spark's localhost, port 8265. To view it from another machine, open a tunnel there and browse to http://localhost:8265:
