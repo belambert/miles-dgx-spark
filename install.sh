@@ -35,10 +35,12 @@ TORCHVISION_VERSION=${TORCHVISION_VERSION:-0.29.1+cu130}
 TORCHAUDIO_VERSION=${TORCHAUDIO_VERSION:-2.11.0+cu130}
 
 # ---------------------------------------------------------------- locations
-PREFIX=${PREFIX:-$HOME/.venvs/miles}   # keep separate from the SGLang/vLLM serving envs
-SRC=${SRC:-$PWD/miles-src}             # absolute: editable installs record this path
+# everything lives next to this script; paths are absolute because the venv and
+# the editable installs record them, so moving this folder means reinstalling
+HERE=$(dirname "$(readlink -f "$0")")
+PREFIX=${PREFIX:-$HERE/.venv}          # keep separate from the SGLang/vLLM serving envs
+SRC=${SRC:-$HERE/miles-src}
 WHEELS=$SRC/wheels
-HERE=$(dirname "$(readlink -f "$0")")  # resolved before the cd below
 
 export TORCH_CUDA_ARCH_LIST="12.1"     # only matters for anything built from source
 export MAX_JOBS=${MAX_JOBS:-8}         # source builds on 20 ARM cores + unified memory: don't go wild

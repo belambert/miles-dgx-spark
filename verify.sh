@@ -2,7 +2,7 @@
 # Check that the Miles venv built by install.sh imports and can use the GPU.
 set -euo pipefail
 
-PREFIX=${PREFIX:-$HOME/.venvs/miles}
+PREFIX=${PREFIX:-$(dirname "$(readlink -f "$0")")/.venv}
 
 # run from a neutral dir so a local package dir can't shadow the installed one
 cd "$(mktemp -d)"
