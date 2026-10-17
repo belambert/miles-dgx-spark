@@ -4,7 +4,7 @@ Non-Docker install of [Miles](https://github.com/radixark/miles) for a DGX Spark
 
 ## Usage
 
-The installer clones the sources into `./miles-src` and builds a venv in `./.venv`. Miles comes from the `dgx-spark` branch of [our fork](https://github.com/belambert/miles/tree/dgx-spark), which adds a single-GPU Qwen3-0.6B recipe to `scripts/run_qwen3_dense.py`. The installer needs the pinned `radixark/miles` Docker image pulled locally, because a few compiled packages are copied out of it.
+The installer clones the sources into `./miles-src` and builds a venv in `./.venv`. Miles comes from the `dgx-spark` branch of [our fork](https://github.com/belambert/miles/tree/dgx-spark), which adds a single-GPU Qwen3-0.6B recipe and an `--attention-backend` flag to `scripts/run_qwen3_dense.py`. The installer needs the pinned `radixark/miles` Docker image pulled locally, because a few compiled packages are copied out of it.
 
     ./install.sh 2>&1 | tee install.log
 
@@ -42,11 +42,11 @@ Convert the weights to Megatron's `torch_dist` format. Keep the HuggingFace dire
     PYTHONPATH=$HERE/miles-src/Megatron-LM python tools/convert_hf_to_torch_dist.py $MODEL_ARGS \
         --hf-checkpoint $MODELS/Qwen3-0.6B --save $MODELS/Qwen3-0.6B_torch_dist
 
-Launch GRPO training. Keep the recipe's `flash` attention backend: with `auto`, Transformer Engine picks cuDNN fused attention, whose backward pass doesn't support packed sequences on the GB10 (sm_121):
+Launch GRPO training. Use the `unfused` attention backend, the only Transformer Engine backend that trains correctly on the GB10 (sm_121): `flash` runs FlashAttention 4 (an SGLang dependency), which gives wrong outputs there, and cuDNN `fused` attention (what `auto` picks) can't run the backward pass on packed sequences:
 
     python scripts/run_qwen3_dense.py --model-name Qwen3-0.6B --num-gpus-per-node 1 \
         --model-dir $MODELS --data-dir $DATA --output-dir $HERE/runs \
-        --megatron-path $HERE/miles-src/Megatron-LM
+        --megatron-path $HERE/miles-src/Megatron-LM --attention-backend unfused
 
 Checkpoints land in `./runs/checkpoints` every 20 rollouts, and rerunning the launch command resumes from the last one. Set `WANDB_API_KEY` to log to wandb. Watch `rollout/raw_reward` in the output climb.
 

@@ -9,6 +9,7 @@ SRC=${SRC:-$HERE/miles-src}
 
 cd "$SRC/miles"
 "$PREFIX/bin/python" scripts/run_qwen3_dense.py --model-name Qwen3-0.6B --num-gpus-per-node 1 \
+  --attention-backend unfused \
   --model-dir "$HERE/models" --data-dir "$HERE/datasets" --output-dir "$HERE/runs" \
   --megatron-path "$SRC/Megatron-LM" \
   --num-rollout 20 --no-enable-eval \
