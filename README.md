@@ -54,3 +54,16 @@ The launcher starts a local Ray cluster. Before that it kills any running `sglan
 The Ray dashboard listens only on the Spark's localhost, port 8265. To view it from another machine, open a tunnel there and browse to http://localhost:8265:
 
     ssh -N -L 8265:localhost:8265 bel@10.0.0.245
+
+## Managing Jobs
+
+The launcher submits training as a Ray job. With the venv active, list running jobs (`ray job list` prints raw objects, including each job's full `train.py` command line):
+
+    ray list jobs --filter "status=RUNNING" --format json | jq -r '.[] | "\(.submission_id)  \(.status)"'
+
+Inspect, follow or stop a job by its submission ID:
+
+    ray job list                     # every job, including finished and stopped ones
+    ray job status <submission_id>   # one job's status
+    ray job logs -f <submission_id>  # follow a job's output
+    ray job stop <submission_id>
