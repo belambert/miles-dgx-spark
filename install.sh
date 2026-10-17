@@ -13,7 +13,9 @@ set -euo pipefail
 # origin/main commit (2026-10-16) whose package reports 0.1.2. The v0.1.2 tag (a22fd82419)
 # is not its ancestor, so don't swap in a tag. Unlike older refs, this commit has no
 # docker/patch/cu13/; its TE patches only exist baked into the image's build.
-MILES_REF=${MILES_REF:-e1a791d3e3}            # /root/miles in the image
+# We use the dgx-spark branch of our fork: that commit plus a single-GPU Qwen3-0.6B recipe.
+MILES_REPO=${MILES_REPO:-https://github.com/belambert/miles.git}
+MILES_REF=${MILES_REF:-4aeda5664b}            # dgx-spark, on top of e1a791d3e3 (/root/miles in the image)
 SGLANG_COMMIT=${SGLANG_COMMIT:-74bd569} # sglang-miles branch on sgl-project/sglang
 MEGATRON_COMMIT=${MEGATRON_COMMIT:-9df207fd1} # radixark/Megatron-LM, miles-main
 WHEELS_REPO=yueming-yuan/miles-wheels
@@ -65,8 +67,9 @@ python -m pip install -U pip wheel setuptools
 
 # ---------------------------------------------------------------- 2. sources
 # pinned commits mean detached HEADs; skip git's multi-line advice about it
-[ -d miles ] || git clone https://github.com/radixark/miles.git
-git -C miles fetch --tags && git -C miles -c advice.detachedHead=false checkout "$MILES_REF"
+[ -d miles ] || git clone "$MILES_REPO" miles
+git -C miles remote set-url origin "$MILES_REPO"  # older clones point at radixark
+git -C miles fetch --tags origin && git -C miles -c advice.detachedHead=false checkout "$MILES_REF"
 
 [ -d sglang ] || git clone https://github.com/sgl-project/sglang.git
 git -C sglang fetch origin sglang-miles && git -C sglang -c advice.detachedHead=false checkout -f "$SGLANG_COMMIT"
@@ -159,4 +162,4 @@ PREFIX=$PREFIX "$HERE/verify.sh"
 
 echo
 echo "Done. Activate with: source $PREFIX/bin/activate"
-echo "Launch with: cd $SRC/miles && python scripts/run_qwen3_dense.py --megatron-path $SRC/Megatron-LM --model-dir <models> --data-dir <datasets> ..."
+echo "Then follow Quick Start in the README to train Qwen3-0.6B."
