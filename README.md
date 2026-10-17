@@ -42,12 +42,11 @@ Convert the weights to Megatron's `torch_dist` format. Keep the HuggingFace dire
     PYTHONPATH=$HERE/miles-src/Megatron-LM python tools/convert_hf_to_torch_dist.py $MODEL_ARGS \
         --hf-checkpoint $MODELS/Qwen3-0.6B --save $MODELS/Qwen3-0.6B_torch_dist
 
-Launch GRPO training. The `auto` attention backend lets Transformer Engine choose, since its flash backend isn't guaranteed on sm_121:
+Launch GRPO training. Keep the recipe's `flash` attention backend: with `auto`, Transformer Engine picks cuDNN fused attention, whose backward pass doesn't support packed sequences on the GB10 (sm_121):
 
     python scripts/run_qwen3_dense.py --model-name Qwen3-0.6B --num-gpus-per-node 1 \
         --model-dir $MODELS --data-dir $DATA --output-dir $HERE/runs \
-        --megatron-path $HERE/miles-src/Megatron-LM \
-        --extra-args "--attention-backend auto"
+        --megatron-path $HERE/miles-src/Megatron-LM
 
 Checkpoints land in `./runs/checkpoints` every 20 rollouts, and rerunning the launch command resumes from the last one. Set `WANDB_API_KEY` to log to wandb. Watch `rollout/raw_reward` in the output climb.
 

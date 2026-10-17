@@ -12,5 +12,4 @@ cd "$SRC/miles"
   --model-dir "$HERE/models" --data-dir "$HERE/datasets" --output-dir "$HERE/runs" \
   --megatron-path "$SRC/Megatron-LM" \
   --num-rollout 20 --no-enable-eval \
-  --extra-args "--attention-backend auto" \
   "$@"
