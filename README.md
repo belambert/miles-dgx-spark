@@ -46,3 +46,7 @@ Launch GRPO training. The `auto` attention backend lets Transformer Engine choos
 Checkpoints land in `./runs/checkpoints` every 20 rollouts, and rerunning the launch command resumes from the last one. Add `--num-rollout 20 --no-enable-eval` for a short smoke test, and set `WANDB_API_KEY` to log to wandb. Watch `rollout/raw_reward` in the output climb.
 
 The launcher starts a local Ray cluster. Before that it kills any running `sglang`, `ray` and `redis` processes, including ones serving from other envs.
+
+The Ray dashboard listens only on the Spark's localhost, port 8265. To view it from another machine, open a tunnel there and browse to http://localhost:8265:
+
+    ssh -N -L 8265:localhost:8265 bel@10.0.0.245
