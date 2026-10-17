@@ -90,7 +90,7 @@ ls -lh "$WHEELS"
 # ---------------------------------------------------------------- 5. python deps, in Dockerfile order
 # FA3 (flash_attn_3) skipped: Hopper-only.
 pip install "git+https://github.com/ISEEKYAN/mbridge.git@${MBRIDGE_COMMIT}" --no-deps
-pip install flash-linear-attention==0.4.2
+pip install flash-linear-attention==0.5.2
 # Skipped (model-specific): tilelang/tile_kernels (DeepSeek-V4), FlashQLA (Qwen GDN),
 # fast-hadamard-transform, causal-conv1d/mamba-ssm (Nemotron-H).
 
