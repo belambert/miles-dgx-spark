@@ -153,9 +153,10 @@ pip install --force-reinstall --no-deps "apache-tvm-ffi==${TVM_FFI_VERSION}"
 # ---------------------------------------------------------------- 9. verify
 python - <<'EOF'
 import torch, sglang, megatron.core, transformer_engine.pytorch, torch_memory_saver, miles
+from importlib.metadata import version
 print("torch", torch.__version__, "| cuda", torch.version.cuda, "| device", torch.cuda.get_device_name(0),
       torch.cuda.get_device_capability())
-print("sglang", sglang.__version__)
+print("sglang", version("sglang"))  # the package has no top-level __version__
 x = torch.randn(1024, 1024, device="cuda", dtype=torch.bfloat16); print("matmul ok", (x @ x).shape)
 try:
     import flash_attn; print("flash_attn", flash_attn.__version__)
