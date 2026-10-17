@@ -38,6 +38,7 @@ TORCHAUDIO_VERSION=${TORCHAUDIO_VERSION:-2.11.0+cu130}
 PREFIX=${PREFIX:-$HOME/.venvs/miles}   # keep separate from the SGLang/vLLM serving envs
 SRC=${SRC:-$PWD/miles-src}             # absolute: editable installs record this path
 WHEELS=$SRC/wheels
+HERE=$(dirname "$(readlink -f "$0")")  # resolved before the cd below
 
 export TORCH_CUDA_ARCH_LIST="12.1"     # only matters for anything built from source
 export MAX_JOBS=${MAX_JOBS:-8}         # source builds on 20 ARM cores + unified memory: don't go wild
@@ -151,19 +152,7 @@ chmod +x "$PREFIX/bin/sgl-model-gateway"
 pip install --force-reinstall --no-deps "apache-tvm-ffi==${TVM_FFI_VERSION}"
 
 # ---------------------------------------------------------------- 9. verify
-python - <<'EOF'
-import torch, sglang, megatron.core, transformer_engine.pytorch, torch_memory_saver, miles
-from importlib.metadata import version
-print("torch", torch.__version__, "| cuda", torch.version.cuda, "| device", torch.cuda.get_device_name(0),
-      torch.cuda.get_device_capability())
-print("sglang", version("sglang"))  # the package has no top-level __version__
-x = torch.randn(1024, 1024, device="cuda", dtype=torch.bfloat16); print("matmul ok", (x @ x).shape)
-try:
-    import flash_attn; print("flash_attn", flash_attn.__version__)
-except Exception as e:
-    print("flash_attn import failed (use --attention-backend auto):", e)
-print("Miles import OK")
-EOF
+PREFIX=$PREFIX "$HERE/verify.sh"
 
 echo
 echo "Done. Activate with: source $PREFIX/bin/activate"
