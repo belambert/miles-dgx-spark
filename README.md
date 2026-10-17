@@ -1,4 +1,4 @@
-# miles-run
+# miles-dgx-spark
 
 Non-Docker install of [Miles](https://github.com/radixark/miles) for a DGX Spark (GB10, aarch64, CUDA 13).
 
