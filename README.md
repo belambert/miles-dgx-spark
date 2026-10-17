@@ -18,6 +18,12 @@ Set `PREFIX` or `SRC` to use other locations. The pins at the top of `install.sh
 
 This is the upstream [quick start](https://github.com/radixark/miles/blob/main/docs/getting-started/quick-start.md) on one Spark, with Qwen3-0.6B instead of Qwen3-4B and everything kept under this repo instead of `/root`. Run the steps from the repo root.
 
+| Role     | Hugging Face repo                                                                      | Contents                                         |
+|----------|----------------------------------------------------------------------------------------|--------------------------------------------------|
+| Model    | [Qwen/Qwen3-0.6B](https://huggingface.co/Qwen/Qwen3-0.6B)                              | The policy being trained                         |
+| Training | [zhuzilin/dapo-math-17k](https://huggingface.co/datasets/zhuzilin/dapo-math-17k)       | 17k math problems with checkable answers         |
+| Eval     | [zhuzilin/aime-2024](https://huggingface.co/datasets/zhuzilin/aime-2024)               | AIME 2024 problems, evaluated on but not trained |
+
 Activate the venv and name the directories:
 
     source .venv/bin/activate
