@@ -9,6 +9,10 @@
 set -euo pipefail
 
 # ---------------------------------------------------------------- pins (match radixark/miles:latest as run on this Spark, 2026-10-17)
+# Miles has no release matching the image: /root/miles there is e1a791d3e3, an untagged
+# origin/main commit (2026-10-16) whose package reports 0.1.2. The v0.1.2 tag (a22fd82419)
+# is not its ancestor, so don't swap in a tag. Unlike older refs, this commit has no
+# docker/patch/cu13/; its TE patches only exist baked into the image's build.
 MILES_REF=${MILES_REF:-e1a791d3e3}            # /root/miles in the image
 SGLANG_COMMIT=${SGLANG_COMMIT:-74bd569} # sglang-miles branch on sgl-project/sglang
 MEGATRON_COMMIT=${MEGATRON_COMMIT:-9df207fd1} # radixark/Megatron-LM, miles-main
