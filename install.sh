@@ -64,14 +64,15 @@ source "$PREFIX/bin/activate"
 python -m pip install -U pip wheel setuptools
 
 # ---------------------------------------------------------------- 2. sources
+# pinned commits mean detached HEADs; skip git's multi-line advice about it
 [ -d miles ] || git clone https://github.com/radixark/miles.git
-git -C miles fetch --tags && git -C miles checkout "$MILES_REF"
+git -C miles fetch --tags && git -C miles -c advice.detachedHead=false checkout "$MILES_REF"
 
 [ -d sglang ] || git clone https://github.com/sgl-project/sglang.git
-git -C sglang fetch origin sglang-miles && git -C sglang checkout -f "$SGLANG_COMMIT"
+git -C sglang fetch origin sglang-miles && git -C sglang -c advice.detachedHead=false checkout -f "$SGLANG_COMMIT"
 
 [ -d Megatron-LM ] || git clone --recursive -b miles-main https://github.com/radixark/Megatron-LM.git
-git -C Megatron-LM checkout "$MEGATRON_COMMIT" && git -C Megatron-LM submodule update --init --recursive
+git -C Megatron-LM -c advice.detachedHead=false checkout "$MEGATRON_COMMIT" && git -C Megatron-LM submodule update --init --recursive
 
 # ---------------------------------------------------------------- 3. torch + sglang (replaces the lmsysorg/sglang base image)
 # sglang's pyproject pins torch; the cu130 index supplies the CUDA 13 aarch64 build.
