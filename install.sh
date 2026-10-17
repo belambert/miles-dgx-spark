@@ -36,7 +36,7 @@ TORCHAUDIO_VERSION=${TORCHAUDIO_VERSION:-2.11.0+cu130}
 
 # ---------------------------------------------------------------- locations
 PREFIX=${PREFIX:-$HOME/.venvs/miles}   # keep separate from the SGLang/vLLM serving envs
-SRC=${SRC:-$HOME/miles-src}
+SRC=${SRC:-$PWD/miles-src}             # absolute: editable installs record this path
 WHEELS=$SRC/wheels
 
 export TORCH_CUDA_ARCH_LIST="12.1"     # only matters for anything built from source
