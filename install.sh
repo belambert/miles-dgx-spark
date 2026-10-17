@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Non-Docker Miles install for DGX Spark (GB10 / sm_121, aarch64, CUDA 13, Python 3.12).
 # Mirrors radixark/miles docker/Dockerfile step by step, minus the base image and
-# the model-specific extras that Qwen3 dense doesn't need.
+# the model-specific extras that Qwen3 dense doesn't need. Needs the image pulled
+# locally: TE, apex and flash-attn are copied out of it (nothing runs in a container).
 #
 # Before running: compare the pins below with `git show <tag>:docker/Dockerfile`
 # and the release notes for the tag you target. They move between releases.
@@ -18,6 +19,10 @@ MBRIDGE_COMMIT=89eb10887887bc74853f89a4de258c0702932a1c
 BRIDGE_COMMIT=7f0fb3456f8ffe47599b5fd167b454605d85f932   # radixark/Megatron-Bridge
 CUDNN_VERSION=9.24.0.43
 TVM_FFI_VERSION=0.1.11   # must match sglang's own pin; check python/pyproject.toml
+# compiled extensions are copied from this image, so they match its torch exactly
+# pinned by digest: this is the :latest that every pin in this block was read from
+MILES_IMAGE=${MILES_IMAGE:-radixark/miles@sha256:ad52af8b83076331d43e65a7a71ecc1daf128512b82829701e098540fcd80478}
+IMAGE_DISTS="transformer_engine transformer_engine_cu13 transformer_engine_torch apex flash_attn"
 # torch must match what the prebuilt wheels (TE, flash-attn, apex) were built against,
 # i.e. the torch in the docker image -- NOT sglang-miles' pyproject pin. Get them with:
 #   docker run --rm radixark/miles:<tag> pip freeze | grep -E '^torch(vision|audio)?=='
@@ -74,7 +79,7 @@ print("torch", torch.__version__, "cuda", torch.version.cuda, "cap", torch.cuda.
 assert torch.version.cuda.startswith("13"), "need a CUDA 13 torch build"
 EOF
 
-# ---------------------------------------------------------------- 4. prebuilt aarch64 wheels (flash-attn, TE, apex, router, ...)
+# ---------------------------------------------------------------- 4. prebuilt aarch64 wheels (mooncake, router, ...)
 curl -sL "https://api.github.com/repos/${WHEELS_REPO}/releases/tags/${WHEELS_TAG}" \
 | python3 -c "import sys,json,subprocess,os; w='$WHEELS'; \
 [subprocess.run(['curl','-fSL','-o',os.path.join(w,a['name']),a['browser_download_url']],check=True) \
@@ -83,28 +88,32 @@ curl -sL "https://api.github.com/repos/${WHEELS_REPO}/releases/tags/${WHEELS_TAG
 ls -lh "$WHEELS"
 
 # ---------------------------------------------------------------- 5. python deps, in Dockerfile order
-pip install "$WHEELS"/flash_attn-*.whl
 # FA3 (flash_attn_3) skipped: Hopper-only.
 pip install "git+https://github.com/ISEEKYAN/mbridge.git@${MBRIDGE_COMMIT}" --no-deps
 pip install flash-linear-attention==0.4.2
 # Skipped (model-specific): tilelang/tile_kernels (DeepSeek-V4), FlashQLA (Qwen GDN),
 # fast-hadamard-transform, causal-conv1d/mamba-ssm (Nemotron-H).
 
-# TransformerEngine 2.17, exact wheels, no deps, then the cu13 patches
-pip uninstall -y transformer-engine transformer-engine-cu12 transformer-engine-cu13 transformer-engine-torch || true
-pip install --force-reinstall --no-deps \
-  "$WHEELS"/transformer_engine-2.17.0-py3-none-any.whl \
-  "$WHEELS"/transformer_engine_cu13-2.17.0-py3-none-manylinux_2_28_*.whl \
-  "$WHEELS"/transformer_engine_torch-2.17.0-cp312-cp312-linux_*.whl
+# TransformerEngine, apex, flash-attn: copied out of the image. The release's TE 2.17.0
+# wheel was built against an older torch (undefined c10 symbols on import); the image
+# has its own patched 2.17.0+miles build matching its torch. Docker is only a file source.
+pip uninstall -y $IMAGE_DISTS transformer-engine-cu12 || true
+docker run --rm -i --user "$(id -u):$(id -g)" -v "$(python -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')":/dst \
+  "$MILES_IMAGE" python - $IMAGE_DISTS <<'EOF'
+import os, shutil, sys
+from importlib.metadata import distribution
+for name in sys.argv[1:]:
+    d = distribution(name)
+    root, n = d.locate_file(""), 0
+    for f in map(str, d.files):
+        src = os.path.join(root, f)
+        if f.startswith("..") or not os.path.isfile(src):  # skip console scripts outside site-packages
+            continue
+        os.makedirs(os.path.dirname(out := os.path.join("/dst", f)), exist_ok=True)
+        shutil.copy2(src, out); n += 1
+    print(f"{name} {d.version}: {n} files")
+EOF
 pip install einops onnx onnxscript pydantic nvdlfw-inspect
-TE_DIR=$(python -c 'import importlib.util; print(importlib.util.find_spec("transformer_engine").submodule_search_locations[0])')
-for p in miles/docker/patch/cu13/*.patch; do
-  [ -e "$p" ] || continue
-  echo "Applying $(basename "$p")"
-  patch -d "$TE_DIR" -p1 < "$p"
-done
-
-pip install "$WHEELS"/apex-*.whl
 
 pip install -e Megatron-LM
 pip install "git+https://github.com/NVIDIA-NeMo/Emerging-Optimizers.git@v0.1.0"
