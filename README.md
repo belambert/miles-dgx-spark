@@ -43,7 +43,11 @@ Launch GRPO training. The `auto` attention backend lets Transformer Engine choos
         --megatron-path $HERE/miles-src/Megatron-LM \
         --extra-args "--attention-backend auto"
 
-Checkpoints land in `./runs/checkpoints` every 20 rollouts, and rerunning the launch command resumes from the last one. Add `--num-rollout 20 --no-enable-eval` for a short smoke test, and set `WANDB_API_KEY` to log to wandb. Watch `rollout/raw_reward` in the output climb.
+Checkpoints land in `./runs/checkpoints` every 20 rollouts, and rerunning the launch command resumes from the last one. Set `WANDB_API_KEY` to log to wandb. Watch `rollout/raw_reward` in the output climb.
+
+The full recipe runs 3000 rollouts and starts with an AIME eval that takes hours on one Spark. For a quick end-to-end check, `smoke.sh` runs the same launch with 20 rollouts and no eval:
+
+    ./smoke.sh
 
 The launcher starts a local Ray cluster. Before that it kills any running `sglang`, `ray` and `redis` processes, including ones serving from other envs.
 
