@@ -73,7 +73,7 @@ By default each GSM8K run (`EVAL=gsm8k`) scores the model on a fixed 256-problem
 | `qwen35-2b`  | Qwen3.5-2B   | GSM8K | off      | 4096         | 8       | Fits in memory, barely; not yet run on GSM8K                                       |
 | `qwen35-4b`  | Qwen3.5-4B   | GSM8K | off      | 4096         | 8       | Out of memory in its first optimizer step (on dapo)                                |
 
-Each preset writes to `runs/<preset>` and resumes from the checkpoint there, so a finished run won't train again; delete its directory to start over, for example `rm -rf runs/qwen3`. A checkpoint with optimizer state is about 8 GB for the 0.6B and 50–60 GB for the 4B. Each run also saves every rollout's samples in `runs/<preset>/dump_details/rollout_data/<rollout>.pt`, so you can read what the model wrote:
+Each preset writes to `runs/<preset>` and resumes from the checkpoint there, so a finished run won't train again; delete its directory to start over, for example `rm -rf runs/qwen3`. Checkpoints are saved every `SAVE_EVERY` rollouts (default 20) and never deleted, so raise it for long runs, for example `SAVE_EVERY=50 ROLLOUTS=200 ./run.sh qwen35-2b`. A checkpoint with optimizer state is about 8 GB for the 0.6B and 50–60 GB for the 4B. Each run also saves every rollout's samples in `runs/<preset>/dump_details/rollout_data/<rollout>.pt`, so you can read what the model wrote:
 
     PYTHONPATH=miles-src/miles .venv/bin/python -c "import torch; s = torch.load('runs/qwen3/dump_details/rollout_data/0.pt', weights_only=False)['samples'][0]; print(s['reward'], s['status'], s['response'])"
 

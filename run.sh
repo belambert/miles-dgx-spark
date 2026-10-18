@@ -59,6 +59,7 @@ esac
 : "${MAX_LEN:=2048}"               # response cap in tokens
 : "${PROMPTS:=8}"                  # prompts per rollout, 8 samples each
 : "${ROLLOUTS:=20}"
+: "${SAVE_EVERY:=20}"              # rollouts per checkpoint; Miles keeps them all (~20-25 GB each for the 2B)
 : "${EVAL:=gsm8k}"                 # gsm8k, aime (the recipe's, every 20 rollouts; hours here) or off
 : "${EVAL_EVERY:=10}"              # gsm8k eval interval, in rollouts; it also runs before training
 : "${SGLANG_MEM:=0.7}"             # SGLang's share of the 128 GB, for weights and KV cache
@@ -72,7 +73,7 @@ OUTPUT_DIR=${OUTPUT_DIR:-$HERE/runs/$preset}
 extra="--tensor-model-parallel-size 1 --rollout-max-response-len $MAX_LEN \
 --rollout-batch-size $PROMPTS --global-batch-size $((PROMPTS * 8)) \
 --sglang-mem-fraction-static $SGLANG_MEM --max-tokens-per-gpu $MAX_TOKENS_PER_GPU \
---log-probs-chunk-size $LOGPROB_CHUNK --rm-type $REWARD"
+--log-probs-chunk-size $LOGPROB_CHUNK --rm-type $REWARD --save-interval $SAVE_EVERY"
 [ "$THINKING" = off ] && extra+=" --apply-chat-template-kwargs '{\"enable_thinking\": false}'"
 [ "$DATASET" = gsm8k ] && extra+=" --prompt-data $HERE/datasets/gsm8k/train.parquet --input-key messages --label-key label"
 # Qwen3.5's prefix cache keeps ~3 linear-attention state slots per request, capping concurrency; hits are ~4%
