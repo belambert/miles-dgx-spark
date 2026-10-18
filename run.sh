@@ -74,7 +74,8 @@ extra="--tensor-model-parallel-size 1 --rollout-max-response-len $MAX_LEN \
 --rollout-batch-size $PROMPTS --global-batch-size $((PROMPTS * 8)) \
 --sglang-mem-fraction-static $SGLANG_MEM --max-tokens-per-gpu $MAX_TOKENS_PER_GPU \
 --log-probs-chunk-size $LOGPROB_CHUNK --rm-type $REWARD --save-interval $SAVE_EVERY"
-[ "$THINKING" = off ] && extra+=" --apply-chat-template-kwargs '{\"enable_thinking\": false}'"
+# explicit both ways: Qwen3's template thinks unless told not to, Qwen3.5's only when told to
+extra+=" --apply-chat-template-kwargs '{\"enable_thinking\": $([ "$THINKING" = on ] && echo true || echo false)}'"
 [ "$DATASET" = gsm8k ] && extra+=" --prompt-data $HERE/datasets/gsm8k/train.parquet --input-key messages --label-key label"
 # Qwen3.5's prefix cache keeps ~3 linear-attention state slots per request, capping concurrency; hits are ~4%
 [[ $MODEL == Qwen3.5-* ]] && extra+=" --sglang-disable-radix-cache"
