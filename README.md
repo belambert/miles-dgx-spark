@@ -4,21 +4,21 @@ Non-Docker install of [Miles](https://github.com/radixark/miles) for a DGX Spark
 
 ## Compromises
 
-This runs the upstream [quick start](https://github.com/radixark/miles/blob/main/docs/getting-started/quick-start.md) on one Spark, which takes some changes. "Where" says which launch carries each change: the Quick Start command below (all), `smoke.sh` (smoke), or only `smoke-small.sh` (small); each smoke script includes the changes above it.
+This runs the upstream [quick start](https://github.com/radixark/miles/blob/main/docs/getting-started/quick-start.md) on one Spark, which takes some changes. "Where" says which launch carries each change: the Quick Start command below (all), `smoke.sh` (smoke), `smoke-thinking.sh` (thinking), or `smoke-small.sh` (small); the other smoke scripts build on `smoke.sh`.
 
-| Setting             | Upstream quick start               | Here                                                  | Where | Why                                                 |
-|---------------------|------------------------------------|-------------------------------------------------------|-------|-----------------------------------------------------|
-| Install             | Docker image                       | host venv; TE, apex, flash-attn copied from the image | all   | Non-Docker install                                  |
-| Model               | Qwen3-4B                           | Qwen3-0.6B                                            | all   | Fits one GPU with TP 1                              |
-| GPUs                | 8 (TP 2, 4 SGLang engines)         | 1 (TP 1, 1 engine)                                    | all   | A Spark has one GB10                                |
-| Attention           | FlashAttention via TE              | TE patched to use FA2, not FA4                        | all   | TE + FA4 gives wrong attention (TE#3528)            |
-| Rollouts            | 3000                               | 20                                                    | smoke | A quick end-to-end check                            |
-| AIME eval           | before training, every 20 rollouts | off                                                   | smoke | The first eval alone takes hours                    |
-| Prompts per rollout | 32 (256 samples)                   | 8 (64 samples)                                        | small | 256 long samples overflow the KV cache              |
-| Global batch        | 256                                | 64                                                    | small | Matches the smaller rollout                         |
-| Max response        | 8192 tokens                        | 2048 tokens                                           | small | Keeps rollouts under a minute                       |
-| Qwen3 thinking      | on                                 | off                                                   | small | Thinking runs past 2k tokens, so all rewards were 0 |
-| Reward              | `deepscaler`                       | `math`                                                | small | `deepscaler` needs `</think>` in the response       |
+| Setting             | Upstream quick start               | Here                                                  | Where           | Why                                                 |
+|---------------------|------------------------------------|-------------------------------------------------------|-----------------|-----------------------------------------------------|
+| Install             | Docker image                       | host venv; TE, apex, flash-attn copied from the image | all             | Non-Docker install                                  |
+| Model               | Qwen3-4B                           | Qwen3-0.6B                                            | all             | Fits one GPU with TP 1                              |
+| GPUs                | 8 (TP 2, 4 SGLang engines)         | 1 (TP 1, 1 engine)                                    | all             | A Spark has one GB10                                |
+| Attention           | FlashAttention via TE              | TE patched to use FA2, not FA4                        | all             | TE + FA4 gives wrong attention (TE#3528)            |
+| Rollouts            | 3000                               | 20                                                    | smoke           | A quick end-to-end check                            |
+| AIME eval           | before training, every 20 rollouts | off                                                   | smoke           | The first eval alone takes hours                    |
+| Prompts per rollout | 32 (256 samples)                   | 8 (64 samples)                                        | small, thinking | 256 long samples overflow the KV cache              |
+| Global batch        | 256                                | 64                                                    | small, thinking | Matches the smaller rollout                         |
+| Max response        | 8192 tokens                        | 2048 tokens                                           | small           | Keeps rollouts under a minute                       |
+| Qwen3 thinking      | on                                 | off                                                   | small           | Thinking runs past 2k tokens, so all rewards were 0 |
+| Reward              | `deepscaler`                       | `math`                                                | small           | `deepscaler` needs `</think>` in the response       |
 
 So the full Quick Start command differs from upstream only in model size, GPU count and the attention fix, but on one Spark its rollouts take 40+ minutes and its first eval several hours. Only `smoke-small.sh` runs in minutes, and it trains a different setup: short, non-thinking answers graded by a different reward.
 
@@ -78,7 +78,11 @@ The full recipe runs 3000 rollouts and starts with an AIME eval that takes hours
 
     ./smoke-small.sh
 
-Each launch keeps its checkpoints in its own directory (`runs/quickstart`, `runs/smoke`, `runs/smoke-small`), because a run resumes from whatever checkpoint its directory holds. A finished smoke run therefore won't train again; delete its directory to start over, for example `rm -rf runs/smoke-small`. Each checkpoint of the 0.6B model is about 8 GB.
+Each launch keeps its checkpoints in its own directory (`runs/quickstart`, `runs/smoke`, `runs/smoke-small`, `runs/smoke-thinking`), because a run resumes from whatever checkpoint its directory holds. A finished smoke run therefore won't train again; delete its directory to start over, for example `rm -rf runs/smoke-small`. Each checkpoint of the 0.6B model is about 8 GB.
+
+`smoke-thinking.sh` sits in between: `smoke-small.sh`'s batch and cache size, but thinking on, 8k-token responses and the recipe's `deepscaler` reward. It checks the thinking path, including training on long sequences, at an estimated 5–10 minutes per rollout:
+
+    ./smoke-thinking.sh
 
 Thinking is off because Qwen3's thinking runs past 2k tokens: with it on, nearly every response was truncated before reaching an answer, every reward was 0, and GRPO had nothing to learn from. Without thinking, responses average 600–800 tokens and none are truncated.
 
