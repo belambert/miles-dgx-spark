@@ -4,7 +4,7 @@ Non-Docker install of [Miles](https://github.com/radixark/miles) for a DGX Spark
 
 ## Compromises
 
-This started as the upstream [quick start](https://github.com/radixark/miles/blob/main/docs/getting-started/quick-start.md) on one Spark. Running it here takes these changes, which are now the defaults of every `run.sh` preset (see Quick Start).
+This started as the upstream [quick start](https://github.com/radixark/miles/blob/main/docs/getting-started/quick-start.md) on one Spark. Running it here takes these changes, which are now the defaults of every `run.sh` preset except `quickstart` and `full` (see Quick Start).
 
 | Setting             | Upstream quick start                        | Here                                                  | Why                                                 |
 |---------------------|---------------------------------------------|-------------------------------------------------------|-----------------------------------------------------|
@@ -21,7 +21,7 @@ This started as the upstream [quick start](https://github.com/radixark/miles/blo
 | Qwen3 thinking      | on                                          | off                                                   | Thinking runs past 2k tokens, so all rewards were 0 |
 | Reward              | `deepscaler`                                | `math`                                                | `deepscaler` needs `</think>` in the response       |
 
-`DATASET=dapo THINKING=on EVAL=aime MAX_LEN=8192 PROMPTS=32 ROLLOUTS=3000 SGLANG_MEM=0.5 ./run.sh qwen3` brings back the upstream recipe, differing only in model size, GPU count and the attention fix, but on one Spark its rollouts take 40+ minutes and its first eval several hours.
+The `quickstart` preset is the upstream recipe, differing only in model size, GPU count and the attention fix, but on one Spark its rollouts take 40+ minutes and its first eval several hours.
 
 ## Usage
 
@@ -58,18 +58,20 @@ Then train with a preset:
 
 `run.sh` launches Miles' `scripts/run_qwen3_dense.py` with the preset's settings. Each preset is one line near the top of the script, and any setting (`MODEL`, `DATASET`, `THINKING`, `MAX_LEN`, `PROMPTS`, `ROLLOUTS`, `EVAL`, `SGLANG_MEM`, `REWARD`, ...) can be overridden from the environment, for example `MAX_LEN=8192 ./run.sh qwen35-2b` or `DATASET=dapo ./run.sh qwen35-4b`. Arguments after the preset go to the launcher. The first line it prints sums up the run. Every rollout has 8 samples per prompt.
 
-By default each run (`EVAL=gsm8k`) scores the model on a fixed 256-problem slice of GSM8K's test set, before training and every `EVAL_EVERY` rollouts (default 10), with one sample per problem at the rollout temperature (1.0) and the training response cap. Unlike the rollout reward, which depends on which 8 training problems came up, this measures the same problems each time, so it shows whether training is helping. A longer run to check that:
+By default each GSM8K run (`EVAL=gsm8k`) scores the model on a fixed 256-problem slice of GSM8K's test set, before training and every `EVAL_EVERY` rollouts (default 10), with one sample per problem at the rollout temperature (1.0) and the training response cap. Unlike the rollout reward, which depends on which 8 training problems came up, this measures the same problems each time, so it shows whether training is helping. A longer run to check that:
 
-    ROLLOUTS=200 ./run.sh qwen35
+    ROLLOUTS=200 ./run.sh qwen35-1b
 
-`EVAL=aime` is the recipe's AIME eval, which takes hours per eval here, and `EVAL=off` skips evals.
+`EVAL=aime` is the recipe's AIME eval, which `quickstart` uses and which takes hours per eval here; `EVAL=off` skips evals.
 
-| Preset      | Model        | Max response | Notes                                               |
-|-------------|--------------|--------------|-----------------------------------------------------|
-| `qwen3`     | Qwen3-0.6B   | 2048         | The fast end-to-end check                           |
-| `qwen35`    | Qwen3.5-0.8B | 4096         | ~1 min per iteration at 2k, reward 0.28–0.66        |
-| `qwen35-2b` | Qwen3.5-2B   | 4096         | Fits in memory, barely; not yet run on GSM8K        |
-| `qwen35-4b` | Qwen3.5-4B   | 4096         | Out of memory in its first optimizer step (on dapo) |
+| Preset       | Model        | Data  | Thinking | Max response | Prompts | Notes                                                                              |
+|--------------|--------------|-------|----------|--------------|---------|------------------------------------------------------------------------------------|
+| `quickstart` | Qwen3-0.6B   | dapo  | on       | 8192         | 32      | The upstream recipe: 3000 rollouts, AIME eval; hours per rollout here              |
+| `full`       | Qwen3-0.6B   | dapo  | on       | 8192         | 32      | `quickstart` for 20 rollouts, no eval; overflows the KV cache, 40+ min per rollout |
+| `qwen3`      | Qwen3-0.6B   | GSM8K | off      | 2048         | 8       | The fast end-to-end check                                                          |
+| `qwen35-1b`  | Qwen3.5-0.8B | GSM8K | off      | 4096         | 8       | ~1 min per iteration at 2k, reward 0.28–0.66                                       |
+| `qwen35-2b`  | Qwen3.5-2B   | GSM8K | off      | 4096         | 8       | Fits in memory, barely; not yet run on GSM8K                                       |
+| `qwen35-4b`  | Qwen3.5-4B   | GSM8K | off      | 4096         | 8       | Out of memory in its first optimizer step (on dapo)                                |
 
 Each preset writes to `runs/<preset>` and resumes from the checkpoint there, so a finished run won't train again; delete its directory to start over, for example `rm -rf runs/qwen3`. A checkpoint with optimizer state is about 8 GB for the 0.6B and 50–60 GB for the 4B. Each run also saves every rollout's samples in `runs/<preset>/dump_details/rollout_data/<rollout>.pt`, so you can read what the model wrote:
 

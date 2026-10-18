@@ -5,11 +5,13 @@
 #   ./run.sh prepare <model>                 download a model and the datasets, convert to torch_dist
 #   MAX_LEN=8192 ./run.sh qwen35-2b          any setting below can be overridden from the environment
 #
-# Every preset trains on GSM8K without thinking and scores a fixed GSM8K test slice every 10 rollouts
-# (see README, Measurements, for how each has done). DATASET=dapo THINKING=on EVAL=aime gives back the
-# upstream recipe's data, thinking and eval.
+# Presets train on GSM8K without thinking and score a fixed GSM8K test slice every 10 rollouts, except
+# quickstart and full (see README, Measurements, for how each has done).
+#   quickstart  the upstream recipe on Qwen3-0.6B: dapo-math, thinking, 8k, 32 prompts, 3000 rollouts,
+#               AIME eval; hours per rollout here
+#   full        quickstart for 20 rollouts without eval; overflows the KV cache, 40+ min per rollout
 #   qwen3       Qwen3-0.6B, 2k                                 the fast end-to-end check
-#   qwen35      Qwen3.5-0.8B, 4k
+#   qwen35-1b   Qwen3.5-0.8B, 4k
 #   qwen35-2b   Qwen3.5-2B, 4k, low-memory optimizer
 #   qwen35-4b   Qwen3.5-4B, 4k, low-memory optimizer; runs out of memory in its first step
 set -euo pipefail
@@ -41,11 +43,13 @@ shift
 
 # preset settings; values already set in the environment win
 case $preset in
-  qwen3)     ;;
-  qwen35)    : "${MODEL:=Qwen3.5-0.8B}" "${MAX_LEN:=4096}" ;;
-  qwen35-2b) : "${MODEL:=Qwen3.5-2B}" "${MAX_LEN:=4096}" "${SGLANG_MEM:=0.5}" "${LOW_MEM:=1}" ;;
-  qwen35-4b) : "${MODEL:=Qwen3.5-4B}" "${MAX_LEN:=4096}" "${SGLANG_MEM:=0.3}" "${LOW_MEM:=1}" "${MAX_TOKENS_PER_GPU:=4096}" "${LOGPROB_CHUNK:=2048}" ;;
-  *)         usage ;;
+  quickstart) : "${DATASET:=dapo}" "${THINKING:=on}" "${MAX_LEN:=8192}" "${PROMPTS:=32}" "${ROLLOUTS:=3000}" "${EVAL:=aime}" "${SGLANG_MEM:=0.5}" ;;
+  full)       : "${DATASET:=dapo}" "${THINKING:=on}" "${MAX_LEN:=8192}" "${PROMPTS:=32}" "${EVAL:=off}" "${SGLANG_MEM:=0.5}" ;;
+  qwen3)      ;;
+  qwen35-1b)  : "${MODEL:=Qwen3.5-0.8B}" "${MAX_LEN:=4096}" ;;
+  qwen35-2b)  : "${MODEL:=Qwen3.5-2B}" "${MAX_LEN:=4096}" "${SGLANG_MEM:=0.5}" "${LOW_MEM:=1}" ;;
+  qwen35-4b)  : "${MODEL:=Qwen3.5-4B}" "${MAX_LEN:=4096}" "${SGLANG_MEM:=0.3}" "${LOW_MEM:=1}" "${MAX_TOKENS_PER_GPU:=4096}" "${LOGPROB_CHUNK:=2048}" ;;
+  *)          usage ;;
 esac
 
 # defaults
