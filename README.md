@@ -41,32 +41,37 @@ Set `PREFIX` or `SRC` to use other locations, and `DATA_ROOT` to keep `run.sh`'s
 
 ## Quick Start
 
-This is the upstream [quick start](https://github.com/radixark/miles/blob/main/docs/getting-started/quick-start.md) on one Spark, with Qwen3-0.6B instead of Qwen3-4B and everything kept under this repo instead of `/root`. Run the steps from the repo root.
+This walks through GRPO on Qwen3.5-2B, the largest model that trains on one Spark, with GSM8K for training and evals and everything kept under this repo instead of `/root`. The upstream [quick start](https://github.com/radixark/miles/blob/main/docs/getting-started/quick-start.md) trains Qwen3-4B on dapo-math-17k instead; the `quickstart` preset keeps that recipe, on Qwen3-0.6B (see Compromises). Run the steps from the repo root.
 
-| Role            | Hugging Face repo                                                                | Original                                                                                                                                                  | Contents                                          |
-|-----------------|----------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------|
-| Model           | [Qwen/Qwen3-0.6B](https://huggingface.co/Qwen/Qwen3-0.6B)                        | –                                                                                                                                                         | The policy being trained                          |
-| Training        | [zhuzilin/dapo-math-17k](https://huggingface.co/datasets/zhuzilin/dapo-math-17k) | [BytedTsinghua-SIA/DAPO-Math-17k](https://huggingface.co/datasets/BytedTsinghua-SIA/DAPO-Math-17k), from the [DAPO](https://dapo-sia.github.io/) RL paper | 17k math problems with checkable answers          |
-| Eval            | [zhuzilin/aime-2024](https://huggingface.co/datasets/zhuzilin/aime-2024)         | [BytedTsinghua-SIA/AIME-2024](https://huggingface.co/datasets/BytedTsinghua-SIA/AIME-2024); problems from the MAA's AIME I and II                         | AIME 2024 problems, evaluated on but not trained  |
-| Training (easy) | [zhuzilin/gsm8k](https://huggingface.co/datasets/zhuzilin/gsm8k)                 | [openai/gsm8k](https://huggingface.co/datasets/openai/gsm8k)                                                                                              | 7.5k grade-school word problems, for small models |
+| Role                     | Hugging Face repo                                                                | Original                                                                                                                                                  | Contents                                         |
+|--------------------------|----------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------|
+| Model                    | [Qwen/Qwen3.5-2B](https://huggingface.co/Qwen/Qwen3.5-2B)                        | –                                                                                                                                                         | The policy being trained                         |
+| Training and eval        | [zhuzilin/gsm8k](https://huggingface.co/datasets/zhuzilin/gsm8k)                 | [openai/gsm8k](https://huggingface.co/datasets/openai/gsm8k)                                                                                              | 7.5k grade-school word problems, 1.3k test ones  |
+| Training (`quickstart`)  | [zhuzilin/dapo-math-17k](https://huggingface.co/datasets/zhuzilin/dapo-math-17k) | [BytedTsinghua-SIA/DAPO-Math-17k](https://huggingface.co/datasets/BytedTsinghua-SIA/DAPO-Math-17k), from the [DAPO](https://dapo-sia.github.io/) RL paper | 17k math problems with checkable answers         |
+| Eval (`quickstart`)      | [zhuzilin/aime-2024](https://huggingface.co/datasets/zhuzilin/aime-2024)         | [BytedTsinghua-SIA/AIME-2024](https://huggingface.co/datasets/BytedTsinghua-SIA/AIME-2024); problems from the MAA's AIME I and II                         | AIME 2024 problems, evaluated on but not trained |
 
-The `zhuzilin` copies are what Miles' recipes download: DAPO-Math-17k deduplicated from 1.79M rows (each problem repeated about 100 times) to 17,398, with prompts asking for `Answer: \boxed{...}` instead of `Answer: ...`; AIME-2024 with each of the 30 problems once instead of 32 times; and GSM8K with a chat-format `messages` column and a system prompt asking for `\boxed{}`.
+The `zhuzilin` copies are what Miles' recipes download: GSM8K with a chat-format `messages` column and a system prompt asking for `\boxed{}`; DAPO-Math-17k deduplicated from 1.79M rows (each problem repeated about 100 times) to 17,398, with prompts asking for `Answer: \boxed{...}` instead of `Answer: ...`; and AIME-2024 with each of the 30 problems once instead of 32 times.
 
-Download a model and the datasets, and convert the model to Megatron's `torch_dist` format. The rollout engine reads the Hugging Face copy, so both are kept. The conversion needs the GPU, so stop any running job first:
+Download the model and the datasets, and convert the model to Megatron's `torch_dist` format. The rollout engine reads the Hugging Face copy, so both are kept (8 GB for the 2B). The conversion needs the GPU, so stop any running job first:
+
+    ./run.sh prepare Qwen3.5-2B
+
+Then train:
+
+    ./run.sh qwen35-2b
+
+This runs 20 rollouts of 8 GSM8K problems with 8 answers each, without thinking and with answers capped at 4k tokens, in about an hour: about 2.5 minutes per iteration, plus a 2.5-minute GSM8K eval before training and every 10 rollouts. The eval starts around 0.77; 20 rollouts are too few to move it, and in a 200-rollout run it rose to 0.86 after 90 rollouts and stayed between 0.85 and 0.91 after that (see Measurements). To run that:
+
+    SAVE_EVERY=50 ROLLOUTS=200 ./run.sh qwen35-2b
+
+For a faster end-to-end check, about 20 minutes, use Qwen3-0.6B:
 
     ./run.sh prepare Qwen3-0.6B
-
-Then train with a preset:
-
     ./run.sh qwen3
 
 `run.sh` launches Miles' `scripts/run_qwen3_dense.py` with the preset's settings. Each preset is one line near the top of the script, and any setting (`MODEL`, `DATASET`, `THINKING`, `MAX_LEN`, `PROMPTS`, `ROLLOUTS`, `EVAL`, `SGLANG_MEM`, `REWARD`, ...) can be overridden from the environment, for example `MAX_LEN=8192 ./run.sh qwen35-2b` or `DATASET=dapo ./run.sh qwen35-4b`. Arguments after the preset go to the launcher. The first line it prints sums up the run. Every rollout has 8 samples per prompt.
 
-By default each GSM8K run (`EVAL=gsm8k`) scores the model on a fixed 256-problem slice of GSM8K's test set, before training and every `EVAL_EVERY` rollouts (default 10), with one sample per problem at the rollout temperature (1.0) and the training response cap. Unlike the rollout reward, which depends on which 8 training problems came up, this measures the same problems each time, so it shows whether training is helping. A longer run to check that:
-
-    ROLLOUTS=200 ./run.sh qwen35-1b
-
-`EVAL=aime` is the recipe's AIME eval, which `quickstart` uses and which takes hours per eval here; `EVAL=off` skips evals.
+By default each GSM8K run (`EVAL=gsm8k`) scores the model on a fixed 256-problem slice of GSM8K's test set, before training and every `EVAL_EVERY` rollouts (default 10), with one sample per problem at the rollout temperature (1.0) and the training response cap. Unlike the rollout reward, which depends on which 8 training problems came up, this measures the same problems each time, so it shows whether training is helping. `EVAL=aime` is the recipe's AIME eval, which `quickstart` uses and which takes hours per eval here; `EVAL=off` skips evals.
 
 | Preset       | Model        | Data  | Thinking | Max response | Prompts | Notes                                                                              |
 |--------------|--------------|-------|----------|--------------|---------|------------------------------------------------------------------------------------|
@@ -77,9 +82,9 @@ By default each GSM8K run (`EVAL=gsm8k`) scores the model on a fixed 256-problem
 | `qwen35-2b`  | Qwen3.5-2B   | GSM8K | off      | 4096         | 8       | Fits in memory, barely; ~2.5 min per iteration, GSM8K test 0.77 → 0.85–0.91        |
 | `qwen35-4b`  | Qwen3.5-4B   | GSM8K | off      | 4096         | 8       | Out of memory in its first optimizer step (on dapo)                                |
 
-Each preset writes to `runs/<preset>` and resumes from the checkpoint there, so a finished run won't train again; delete its directory to start over, for example `rm -rf runs/qwen3`. Checkpoints are saved every `SAVE_EVERY` rollouts (default 20) and never deleted, so raise it for long runs, for example `SAVE_EVERY=50 ROLLOUTS=200 ./run.sh qwen35-2b`. A checkpoint with optimizer state is about 8 GB for the 0.6B and 50–60 GB for the 4B. Each run also saves every rollout's samples in `runs/<preset>/dump_details/rollout_data/<rollout>.pt`, so you can read what the model wrote:
+Each preset writes to `runs/<preset>` and resumes from the checkpoint there, so a finished run won't train again; delete its directory to start over, for example `rm -rf runs/qwen35-2b`. Checkpoints are saved every `SAVE_EVERY` rollouts (default 20) and never deleted, so raise it for long runs, for example `SAVE_EVERY=50 ROLLOUTS=200 ./run.sh qwen35-2b`. A checkpoint with optimizer state is about 8 GB for the 0.6B, 22 GB for the 2B and 50–60 GB for the 4B. Each run also saves every rollout's samples in `runs/<preset>/dump_details/rollout_data/<rollout>.pt`, so you can read what the model wrote:
 
-    PYTHONPATH=miles-src/miles .venv/bin/python -c "import torch; s = torch.load('runs/qwen3/dump_details/rollout_data/0.pt', weights_only=False)['samples'][0]; print(s['reward'], s['status'], s['response'])"
+    PYTHONPATH=miles-src/miles .venv/bin/python -c "import torch; s = torch.load('runs/qwen35-2b/dump_details/rollout_data/0.pt', weights_only=False)['samples'][0]; print(s['reward'], s['status'], s['response'])"
 
 Ray's job logs, by contrast, are wiped whenever a new run restarts Ray. Don't send requests to the running SGLang engine to check outputs instead: it releases its GPU memory during each training step, and a request arriving then crashes the run. Set `WANDB_API_KEY` to log to wandb.
 
