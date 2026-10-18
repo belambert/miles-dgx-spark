@@ -70,7 +70,7 @@ By default each GSM8K run (`EVAL=gsm8k`) scores the model on a fixed 256-problem
 | `full`       | Qwen3-0.6B   | dapo  | on       | 8192         | 32      | `quickstart` for 20 rollouts, no eval; overflows the KV cache, 40+ min per rollout |
 | `qwen3`      | Qwen3-0.6B   | GSM8K | off      | 2048         | 8       | The fast end-to-end check                                                          |
 | `qwen35-1b`  | Qwen3.5-0.8B | GSM8K | off      | 4096         | 8       | ~1 min per iteration at 2k, reward 0.28–0.66                                       |
-| `qwen35-2b`  | Qwen3.5-2B   | GSM8K | off      | 4096         | 8       | Fits in memory, barely; not yet run on GSM8K                                       |
+| `qwen35-2b`  | Qwen3.5-2B   | GSM8K | off      | 4096         | 8       | Fits in memory, barely; ~2.5 min per iteration, GSM8K test 0.77 → 0.85–0.91        |
 | `qwen35-4b`  | Qwen3.5-4B   | GSM8K | off      | 4096         | 8       | Out of memory in its first optimizer step (on dapo)                                |
 
 Each preset writes to `runs/<preset>` and resumes from the checkpoint there, so a finished run won't train again; delete its directory to start over, for example `rm -rf runs/qwen3`. Checkpoints are saved every `SAVE_EVERY` rollouts (default 20) and never deleted, so raise it for long runs, for example `SAVE_EVERY=50 ROLLOUTS=200 ./run.sh qwen35-2b`. A checkpoint with optimizer state is about 8 GB for the 0.6B and 50–60 GB for the 4B. Each run also saves every rollout's samples in `runs/<preset>/dump_details/rollout_data/<rollout>.pt`, so you can read what the model wrote:
@@ -99,7 +99,7 @@ The Ray dashboard listens only on the Spark's localhost, port 8265. To view it f
 
 ## Measurements
 
-Runs on one Spark (2026-10-17), with the TE patch unless noted, mostly from before GSM8K and no thinking became the defaults. "KL" is `train/train_rollout_kl`, the gap between SGLang's and Megatron's log-probs for the same tokens; near zero means training sees the same model SGLang sampled from. Reward is the fraction of answers graded correct per rollout.
+Runs on one Spark (2026-10-17 and 18), with the TE patch unless noted, mostly from before GSM8K and no thinking became the defaults. "KL" is `train/train_rollout_kl`, the gap between SGLang's and Megatron's log-probs for the same tokens; near zero means training sees the same model SGLang sampled from. Reward is the fraction of answers graded correct per rollout.
 
 | Data  | Model        | Samples | Max response | Thinking | Rollout                      | Train step | Mean response | Truncated | Reward         | KL     |
 |-------|--------------|---------|--------------|----------|------------------------------|------------|---------------|-----------|----------------|--------|
@@ -109,6 +109,7 @@ Runs on one Spark (2026-10-17), with the TE patch unless noted, mostly from befo
 | dapo  | Qwen3-0.6B   | 64      | 2048         | off      | 21–38 s                      | 10–14 s    | 640–1005      | 0–5%      | 0.067 (0–0.17) | 0.0005 |
 | GSM8K | Qwen3.5-0.8B | 64      | 2048         | off      | 25–42 s                      | 14–23 s    | 536–1105      | 6–39%     | 0.42 → 0.45    | 0.0004 |
 | dapo  | Qwen3.5-2B   | 64      | 4096         | off      | 172–178 s                    | 95–105 s   | 3671–4001     | 84–95%    | 0.016–0.125    | 0.0004 |
+| GSM8K | Qwen3.5-2B   | 64      | 4096         | off      | 61–102 s                     | 27–59 s    | 504–1357      | 0–19%     | 0.75 → 0.88    | 0.0002 |
 
 The 256-sample thinking batch overflows SGLang's KV cache: throughput fell from about 1,700 to 580 tokens/s as requests were evicted and requeued, and the first rollout never finished. Qwen3-0.6B with thinking and 64 samples keeps its answers in the cache (0.7 memory fraction holds about 600k tokens), but throughput still falls from about 1,400 to 300 tokens/s as answers grow, because every decode step reads the whole cache. Without thinking at 2k it runs 20 rollouts in about 20 minutes; its reward stays flat, as expected for so few steps.
 
@@ -117,6 +118,8 @@ Qwen3.5-0.8B generates the same 64 thinking answers 3.3× faster than Qwen3-0.6B
 On GSM8K, Qwen3.5-0.8B finally gets a learning signal: 28–66% of answers are correct and `grad_norm` is 1.2–2.4 on every step, against 0 on dapo. Over 20 rollouts the mean reward went from 0.42 (rollouts 0–9) to 0.45 (10–19), within noise for 8 prompts per rollout. Rollouts with fewer answers cut off at 2k score higher, so a 4k cap would likely help.
 
 Qwen3.5-2B is the largest Qwen3.5 model that trains on one Spark with these settings (the 4B runs out of memory), though system memory is nearly exhausted during its run. On dapo it writes long answers like the 0.8B: 84–95% hit 4k, for a weak signal (1 and 8 correct of 64 in its first two rollouts).
+
+On GSM8K the 2B trained for 200 rollouts in 8.7 hours (2026-10-18), including 21 evals of about 2.5 minutes each; ranges in its row are the 10th to 90th percentile per rollout. The GSM8K test score rose from 0.77 before training to 0.86 after 90 rollouts and peaked at 0.91 after 100, then stayed between 0.85 and 0.89 through rollout 200, within the noise of a 256-problem eval. Much of the gain came from finishing more answers: the share of test answers cut off at 4k fell from 9–19% over the first 80 rollouts to 2–7% from 90 on, and their mean length from about 1,050 to 800 tokens. The training reward, averaged over blocks of 20 rollouts, went from 0.75 to 0.86 by rollouts 80–99 and stayed at 0.86–0.88 after that. Checkpoints are 22 GB each, about 25 s to save.
 
 Training-step time by attention backend, on the 64-sample, 2k-token batch with thinking on:
 
