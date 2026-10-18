@@ -24,7 +24,7 @@ So the full Quick Start command differs from upstream only in model size, GPU co
 
 ## Usage
 
-The installer clones the sources into `./miles-src` and builds a venv in `./.venv`. Miles comes from the `dgx-spark` branch of [our fork](https://github.com/belambert/miles/tree/dgx-spark), which adds single-GPU Qwen3-0.6B, Qwen3.5-0.8B and Qwen3.5-2B recipes, a Qwen3.5-2B model config, and an `--attention-backend` flag to `scripts/run_qwen3_dense.py`. The installer needs the pinned `radixark/miles` Docker image pulled locally, because a few compiled packages are copied out of it.
+The installer clones the sources into `./miles-src` and builds a venv in `./.venv`. Miles comes from the `dgx-spark` branch of [our fork](https://github.com/belambert/miles/tree/dgx-spark), which adds single-GPU Qwen3-0.6B, Qwen3.5-0.8B and Qwen3.5-2B recipes, a Qwen3.5-2B model config, and `--attention-backend` and `--dump-details` flags to `scripts/run_qwen3_dense.py`. The installer needs the pinned `radixark/miles` Docker image pulled locally, because a few compiled packages are copied out of it.
 
     ./install.sh 2>&1 | tee install.log
 
@@ -79,6 +79,8 @@ The full recipe runs 3000 rollouts and starts with an AIME eval that takes hours
     ./smoke-small.sh
 
 Each launch keeps its checkpoints in its own directory (`runs/quickstart`, `runs/smoke`, `runs/smoke-small`, `runs/smoke-thinking`, `runs/smoke-thinking-qwen35`, `runs/smoke-thinking-qwen35-16k`, `runs/smoke-thinking-qwen35-2b`, `runs/smoke-small-qwen35-4b`, `runs/smoke-small-qwen35`), because a run resumes from whatever checkpoint its directory holds. A finished smoke run therefore won't train again; delete its directory to start over, for example `rm -rf runs/smoke-small`. Each checkpoint of the 0.6B model is about 8 GB.
+
+Every smoke script saves each rollout's prompts, responses and rewards under its output directory, in `dump_details/trajectory/<rollout>.jsonl`, so you can read what the model actually wrote. Don't send requests to the running SGLang engine to check outputs: it releases its GPU memory during each training step, and a request arriving then crashes the run.
 
 `smoke-thinking.sh` sits in between: `smoke-small.sh`'s batch and cache size, but thinking on, 8k-token responses and the recipe's `deepscaler` reward. It checks the thinking path, including training on long sequences, at an estimated 5–10 minutes per rollout:
 

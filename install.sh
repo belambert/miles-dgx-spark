@@ -14,9 +14,10 @@ set -euo pipefail
 # is not its ancestor, so don't swap in a tag. Unlike older refs, this commit has no
 # docker/patch/cu13/; its TE patches only exist baked into the image's build.
 # We use the dgx-spark branch of our fork: that commit plus single-GPU Qwen3-0.6B,
-# Qwen3.5-0.8B and Qwen3.5-2B recipes (and a Qwen3.5-2B model config) and an --attention-backend flag.
+# Qwen3.5-0.8B and Qwen3.5-2B recipes (and a Qwen3.5-2B model config), and --attention-backend and
+# --dump-details flags.
 MILES_REPO=${MILES_REPO:-https://github.com/belambert/miles.git}
-MILES_REF=${MILES_REF:-7cc3b8e2a9}            # dgx-spark, on top of e1a791d3e3 (/root/miles in the image)
+MILES_REF=${MILES_REF:-e54b46912a}            # dgx-spark, on top of e1a791d3e3 (/root/miles in the image)
 SGLANG_COMMIT=${SGLANG_COMMIT:-74bd569} # sglang-miles branch on sgl-project/sglang
 MEGATRON_COMMIT=${MEGATRON_COMMIT:-9df207fd1} # radixark/Megatron-LM, miles-main
 WHEELS_REPO=yueming-yuan/miles-wheels
