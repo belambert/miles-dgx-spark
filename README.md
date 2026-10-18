@@ -78,7 +78,7 @@ The full recipe runs 3000 rollouts and starts with an AIME eval that takes hours
 
     ./smoke-small.sh
 
-Each launch keeps its checkpoints in its own directory (`runs/quickstart`, `runs/smoke`, `runs/smoke-small`, `runs/smoke-thinking`, `runs/smoke-thinking-qwen35`, `runs/smoke-thinking-qwen35-16k`, `runs/smoke-thinking-qwen35-2b`), because a run resumes from whatever checkpoint its directory holds. A finished smoke run therefore won't train again; delete its directory to start over, for example `rm -rf runs/smoke-small`. Each checkpoint of the 0.6B model is about 8 GB.
+Each launch keeps its checkpoints in its own directory (`runs/quickstart`, `runs/smoke`, `runs/smoke-small`, `runs/smoke-thinking`, `runs/smoke-thinking-qwen35`, `runs/smoke-thinking-qwen35-16k`, `runs/smoke-thinking-qwen35-2b`, `runs/smoke-small-qwen35-4b`), because a run resumes from whatever checkpoint its directory holds. A finished smoke run therefore won't train again; delete its directory to start over, for example `rm -rf runs/smoke-small`. Each checkpoint of the 0.6B model is about 8 GB.
 
 `smoke-thinking.sh` sits in between: `smoke-small.sh`'s batch and cache size, but thinking on, 8k-token responses and the recipe's `deepscaler` reward. It checks the thinking path, including training on long sequences, at an estimated 5–10 minutes per rollout:
 
@@ -107,6 +107,16 @@ At 8k, Qwen3.5-0.8B's answers nearly all ran out of room while still thinking (s
         --hf-checkpoint $MODELS/Qwen3.5-2B --save $MODELS/Qwen3.5-2B_torch_dist
     cd $HERE
     ./smoke-thinking-qwen35-2b.sh
+
+`smoke-small-qwen35-4b.sh` runs `smoke-small.sh`'s non-thinking test on [Qwen3.5-4B](https://huggingface.co/Qwen/Qwen3.5-4B), a much stronger model, using Miles' own 4B recipe overridden to one GPU (TP 1). Memory is the constraint: on the GB10, CPU and GPU share one memory pool, so offloading the trainer between steps frees nothing, and the trainer's weights, gradients and Adam state (about 16 bytes per parameter, so about 64 GB) must fit alongside SGLang. The script lowers SGLang's memory fraction to 0.3 to make room. A saved checkpoint, with optimizer state, is roughly 50–60 GB. Download and convert it first, with the GPU free:
+
+    hf download Qwen/Qwen3.5-4B --local-dir $MODELS/Qwen3.5-4B
+    cd miles-src/miles
+    MODEL_ARGS=$(python miles/utils/external_utils/model_args_utils.py qwen3.5-4B)
+    PYTHONPATH=$HERE/miles-src/Megatron-LM python tools/convert_hf_to_torch_dist.py $MODEL_ARGS \
+        --hf-checkpoint $MODELS/Qwen3.5-4B --save $MODELS/Qwen3.5-4B_torch_dist
+    cd $HERE
+    ./smoke-small-qwen35-4b.sh
 
 Thinking is off because Qwen3's thinking runs past 2k tokens: with it on, nearly every response was truncated before reaching an answer, every reward was 0, and GRPO had nothing to learn from. Without thinking, responses average 600–800 tokens and none are truncated.
 
