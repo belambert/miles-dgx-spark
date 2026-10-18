@@ -22,20 +22,48 @@ Some cloud containers mount `/workspace` as a FUSE volume over object storage (`
 
 The installer moves such caches to `~/.cache`, but it stops if `PREFIX` is on one of these volumes. Clone the repo onto local disk instead, so the venv and sources go in it as usual, and keep the data on the volume: `run.sh` puts `models/`, `datasets/` and `runs/` under `DATA_ROOT`, which defaults to the repo root.
 
-    git clone https://github.com/belambert/miles-dgx-spark.git /root/miles-dgx-spark
-    cd /root/miles-dgx-spark
-    bash cloud/install.sh 2>&1 | tee install.log
-    export DATA_ROOT=/workspace/miles-data
-    ./run.sh prepare Qwen3.5-2B && ./run.sh qwen35-2b
-
 Local disk in a container is often the root overlay, which may be small (30 GB on one A100 machine) and is lost when the container is recreated; on RunPod, stopping a pod wipes it too. Checkpoints write to the volume fine but slowly: about 140 MB/s on one RunPod volume, so 2.5 minutes for the 2B's 22 GB, against 25 s on local disk.
 
-To skip the rebuild after a stop, archive the venv and sources onto the volume once the install finishes; it's about 8 GB, from 21 GB, and takes 3 minutes:
+## New RunPod Pod
 
+For a pod whose `/workspace` volume is empty. These steps come from one H100 80GB pod with driver 580 and Ubuntu 24.04, on an image that ships CUDA 12.8. Give the pod a container disk of at least 50 GB, for CUDA 13 (5 GB), the venv and sources (21 GB) and caches; and a volume big enough for the data: about 8 GB for the 2B model and datasets, 22 GB per 2B checkpoint, and 8 GB for a snapshot.
+
+Clone the repo onto local disk, not `/workspace`:
+
+    git clone https://github.com/belambert/miles-dgx-spark.git /root/miles-dgx-spark
+    cd /root/miles-dgx-spark
+
+Install CUDA 13 (skipped if the image already has it) and build the venv and sources, which takes about 15 minutes:
+
+    bash cloud/install-cuda.sh
+    bash cloud/install.sh 2>&1 | tee install.log
+
+Point `DATA_ROOT` at the volume, then download and convert a model and train:
+
+    export DATA_ROOT=/workspace/miles-data
+    ./run.sh prepare Qwen3.5-2B
+    ./run.sh qwen35-2b
+
+Runs go to `$DATA_ROOT/runs/<preset>`, and resume from there. To skip the install the next time the pod starts, take a snapshot (below).
+
+## Snapshot and Restore
+
+`snapshot.sh` archives the venv, the sources and SGLang's kernel cache into `$DATA_ROOT/snapshot/miles-env.tar.zst` on the volume. A restarted pod, or a new pod with the same volume attached, then gets them back in a few minutes instead of a rebuild. Models, datasets and runs are already on the volume, so they aren't in it.
+
+Save after the install finishes, and again after anything changes the venv, such as a newer pin. The archive is about 8 GB, from 21 GB, and takes about 3 minutes:
+
+    cd /root/miles-dgx-spark
     DATA_ROOT=/workspace/miles-data bash cloud/snapshot.sh save
 
-After a restart, clone the repo to the same path again; `restore` reinstalls CUDA 13 if it's gone, unpacks the venv and sources to the same paths and runs `verify.sh`:
+To restore on a restarted or new pod, clone the repo to the same path again (the venv records absolute paths), then restore. `restore` reinstalls CUDA 13 if it's gone, unpacks the venv and sources into the checkout and runs `verify.sh`:
 
+    git clone https://github.com/belambert/miles-dgx-spark.git /root/miles-dgx-spark
+    cd /root/miles-dgx-spark
     DATA_ROOT=/workspace/miles-data bash cloud/snapshot.sh restore
 
-The archive is `$DATA_ROOT/snapshot/miles-env.tar.zst`. Save again after changing the venv.
+Then train as before:
+
+    export DATA_ROOT=/workspace/miles-data
+    ./run.sh qwen35-2b
+
+Restore only on the same kind of GPU. The install adds FlashAttention 3 only on Hopper and builds some packages for the GPU it ran on, so on another kind of GPU, run `install.sh` again and take a new snapshot.
