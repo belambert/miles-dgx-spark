@@ -118,7 +118,7 @@ At 8k, Qwen3.5-0.8B's answers nearly all ran out of room while still thinking (s
     cd $HERE
     ./smoke-small-qwen35-4b.sh
 
-`smoke-small-qwen35.sh` runs the same non-thinking test on Qwen3.5-0.8B, or on the 2B with `--model-name Qwen3.5-2B`. Pass `--output-dir` too when switching models, since a run resumes from whatever checkpoint its directory holds:
+`smoke-small-qwen35.sh` runs the same non-thinking test on Qwen3.5-0.8B, or on the 2B with `--model-name Qwen3.5-2B`, with a 4k cap: even without thinking, Qwen3.5 writes long step-by-step solutions, and at 2k, 92–98% of the 0.8B's answers were cut off and every reward was 0. Pass `--output-dir` too when switching models, since a run resumes from whatever checkpoint its directory holds:
 
     ./smoke-small-qwen35.sh
     ./smoke-small-qwen35.sh --model-name Qwen3.5-2B --output-dir $HERE/runs/smoke-small-qwen35-2b
