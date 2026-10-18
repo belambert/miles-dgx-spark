@@ -104,6 +104,27 @@ The Ray dashboard listens only on the Spark's localhost, port 8265. To view it f
 
     ssh -N -L 8265:localhost:8265 bel@10.0.0.245
 
+## Measurements
+
+Runs of Qwen3-0.6B on one Spark (2026-10-17), with the TE patch unless noted. "KL" is `train/train_rollout_kl`, the gap between SGLang's and Megatron's log-probs for the same tokens; near zero means training sees the same model SGLang sampled from. Reward is the fraction of answers graded correct per rollout.
+
+| Launch              | Samples | Max response | Thinking | Rollout                      | Train step | Mean response | Truncated | Reward         | KL     |
+|---------------------|---------|--------------|----------|------------------------------|------------|---------------|-----------|----------------|--------|
+| `smoke.sh`          | 256     | 8192         | on       | not finished, est. 40–50 min | –          | –             | –         | –              | –      |
+| `smoke-thinking.sh` | 64      | 8192         | on       | 17 min                       | 99 s       | 7410          | 66%       | 0.094          | 0.0007 |
+| `smoke-small.sh`    | 64      | 2048         | off      | 21–38 s                      | 10–14 s    | 640–1005      | 0–5%      | 0.067 (0–0.17) | 0.0005 |
+
+`smoke.sh` overflows SGLang's KV cache: throughput fell from about 1,700 to 580 tokens/s as requests were evicted and requeued, and the first rollout never finished. `smoke-thinking.sh` keeps its 64 answers in the cache (0.7 memory fraction holds about 600k tokens), but throughput still falls from about 1,400 to 300 tokens/s as answers grow, because every decode step reads the whole cache. `smoke-small.sh` runs 20 rollouts in about 20 minutes; its reward stays flat, as expected for so few steps.
+
+Training-step time by attention backend, on the 64-sample, 2k-token batch with thinking on:
+
+| Attention backend  | Kernel TE runs   | Train step | KL     | Result                             |
+|--------------------|------------------|------------|--------|------------------------------------|
+| `flash`, unpatched | FlashAttention 4 | 29 s       | 9.7    | wrong attention                    |
+| `auto`             | cuDNN fused      | –          | –      | backward fails on packed sequences |
+| `unfused`          | plain PyTorch    | 152–163 s  | 0.0008 | correct, slow                      |
+| `flash`, patched   | FlashAttention 2 | 24–25 s    | 0.0007 | correct                            |
+
 ## Managing Jobs
 
 The launcher submits training as a Ray job. With the venv active, list running jobs (`ray job list` prints raw objects, including each job's full `train.py` command line):
