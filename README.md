@@ -24,7 +24,7 @@ So the full Quick Start command differs from upstream only in model size, GPU co
 
 ## Usage
 
-The installer clones the sources into `./miles-src` and builds a venv in `./.venv`. Miles comes from the `dgx-spark` branch of [our fork](https://github.com/belambert/miles/tree/dgx-spark), which adds single-GPU Qwen3-0.6B and Qwen3.5-0.8B recipes and an `--attention-backend` flag to `scripts/run_qwen3_dense.py`. The installer needs the pinned `radixark/miles` Docker image pulled locally, because a few compiled packages are copied out of it.
+The installer clones the sources into `./miles-src` and builds a venv in `./.venv`. Miles comes from the `dgx-spark` branch of [our fork](https://github.com/belambert/miles/tree/dgx-spark), which adds single-GPU Qwen3-0.6B, Qwen3.5-0.8B and Qwen3.5-2B recipes, a Qwen3.5-2B model config, and an `--attention-backend` flag to `scripts/run_qwen3_dense.py`. The installer needs the pinned `radixark/miles` Docker image pulled locally, because a few compiled packages are copied out of it.
 
     ./install.sh 2>&1 | tee install.log
 
@@ -78,7 +78,7 @@ The full recipe runs 3000 rollouts and starts with an AIME eval that takes hours
 
     ./smoke-small.sh
 
-Each launch keeps its checkpoints in its own directory (`runs/quickstart`, `runs/smoke`, `runs/smoke-small`, `runs/smoke-thinking`, `runs/smoke-thinking-qwen35`, `runs/smoke-thinking-qwen35-16k`), because a run resumes from whatever checkpoint its directory holds. A finished smoke run therefore won't train again; delete its directory to start over, for example `rm -rf runs/smoke-small`. Each checkpoint of the 0.6B model is about 8 GB.
+Each launch keeps its checkpoints in its own directory (`runs/quickstart`, `runs/smoke`, `runs/smoke-small`, `runs/smoke-thinking`, `runs/smoke-thinking-qwen35`, `runs/smoke-thinking-qwen35-16k`, `runs/smoke-thinking-qwen35-2b`), because a run resumes from whatever checkpoint its directory holds. A finished smoke run therefore won't train again; delete its directory to start over, for example `rm -rf runs/smoke-small`. Each checkpoint of the 0.6B model is about 8 GB.
 
 `smoke-thinking.sh` sits in between: `smoke-small.sh`'s batch and cache size, but thinking on, 8k-token responses and the recipe's `deepscaler` reward. It checks the thinking path, including training on long sequences, at an estimated 5–10 minutes per rollout:
 
@@ -97,6 +97,16 @@ Each launch keeps its checkpoints in its own directory (`runs/quickstart`, `runs
 At 8k, Qwen3.5-0.8B's answers nearly all ran out of room while still thinking (see Measurements). `smoke-thinking-qwen35-16k.sh` doubles the cap:
 
     ./smoke-thinking-qwen35-16k.sh
+
+`smoke-thinking-qwen35-2b.sh` runs the 16k test on [Qwen3.5-2B](https://huggingface.co/Qwen/Qwen3.5-2B), which has the same layer layout and KV cache per token with twice the hidden size. Download and convert it the same way, with the GPU free:
+
+    hf download Qwen/Qwen3.5-2B --local-dir $MODELS/Qwen3.5-2B
+    cd miles-src/miles
+    MODEL_ARGS=$(python miles/utils/external_utils/model_args_utils.py qwen3.5-2B)
+    PYTHONPATH=$HERE/miles-src/Megatron-LM python tools/convert_hf_to_torch_dist.py $MODEL_ARGS \
+        --hf-checkpoint $MODELS/Qwen3.5-2B --save $MODELS/Qwen3.5-2B_torch_dist
+    cd $HERE
+    ./smoke-thinking-qwen35-2b.sh
 
 Thinking is off because Qwen3's thinking runs past 2k tokens: with it on, nearly every response was truncated before reaching an answer, every reward was 0, and GRPO had nothing to learn from. Without thinking, responses average 600–800 tokens and none are truncated.
 
