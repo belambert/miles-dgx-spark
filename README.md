@@ -54,7 +54,7 @@ The `zhuzilin` copies are what Miles' recipes download: GSM8K with a chat-format
 
 Download the model and the datasets, and convert the model to Megatron's `torch_dist` format. The rollout engine reads the Hugging Face copy, so both are kept (8 GB for the 2B). The conversion needs the GPU, so stop any running job first:
 
-    ./run.sh prepare Qwen3.5-2B
+    ./prepare.sh Qwen3.5-2B
 
 Then train:
 
@@ -66,7 +66,7 @@ This runs 20 rollouts of 8 GSM8K problems with 8 answers each, without thinking 
 
 For a faster end-to-end check, about 20 minutes, use Qwen3-0.6B:
 
-    ./run.sh prepare Qwen3-0.6B
+    ./prepare.sh Qwen3-0.6B
     ./run.sh qwen3
 
 `run.sh` launches Miles' `scripts/run_qwen3_dense.py` with the preset's settings. Each preset is one line near the top of the script, and any setting (`MODEL`, `DATASET`, `THINKING`, `MAX_LEN`, `PROMPTS`, `ROLLOUTS`, `EVAL`, `SGLANG_MEM`, `REWARD`, ...) can be overridden from the environment, for example `MAX_LEN=8192 ./run.sh qwen35-2b` or `DATASET=dapo ./run.sh qwen35-4b`. Arguments after the preset go to the launcher. The first line it prints sums up the run. Every rollout has 8 samples per prompt.
