@@ -16,7 +16,7 @@ set -euo pipefail
 # We use the dgx-spark branch of our fork: that commit plus a single-GPU Qwen3-0.6B recipe
 # and an --attention-backend flag.
 MILES_REPO=${MILES_REPO:-https://github.com/belambert/miles.git}
-MILES_REF=${MILES_REF:-396f094922}            # dgx-spark, on top of e1a791d3e3 (/root/miles in the image)
+MILES_REF=${MILES_REF:-041d5abdce}            # dgx-spark, on top of e1a791d3e3 (/root/miles in the image)
 SGLANG_COMMIT=${SGLANG_COMMIT:-74bd569} # sglang-miles branch on sgl-project/sglang
 MEGATRON_COMMIT=${MEGATRON_COMMIT:-9df207fd1} # radixark/Megatron-LM, miles-main
 WHEELS_REPO=yueming-yuan/miles-wheels
@@ -124,6 +124,22 @@ for name in sys.argv[1:]:
         os.makedirs(os.path.dirname(out := os.path.join("/dst", f)), exist_ok=True)
         shutil.copy2(src, out); n += 1
     print(f"{name} {d.version}: {n} files")
+EOF
+
+# TE picks FlashAttention 4 (pulled in by sglang) whenever it's installed, but on GB10 (sm_121)
+# FA4 gives wrong outputs for packed (thd) sequences. Skip it on sm_12x so TE uses FA2, which
+# is correct there. Fails loudly if the TE source moves.
+python - <<'EOF'
+import sysconfig
+# by path: importing TE before torch can't find libnccl
+path = f"{sysconfig.get_paths()['purelib']}/transformer_engine/pytorch/attention/dot_product_attention/utils.py"
+anchor = '            logger.debug("Disabling FlashAttention 4 for compute capability < sm80")\n        use_flash_attention_4 = False\n'
+patch = "    if device_compute_capability[0] == 12:  # miles-dgx-spark: FA4 is wrong on GB10\n        use_flash_attention_4 = False\n"
+src = open(path).read()
+if patch not in src:
+    assert src.count(anchor) == 1, f"FA4 patch anchor not found in {path}"
+    open(path, "w").write(src.replace(anchor, anchor + patch))
+print("TE: FA4 disabled on sm_12x")
 EOF
 pip install einops onnx onnxscript pydantic nvdlfw-inspect
 
