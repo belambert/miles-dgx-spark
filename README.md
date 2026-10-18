@@ -33,7 +33,7 @@ Check an existing install:
 
     ./verify.sh
 
-Set `PREFIX` or `SRC` to use other locations. The pins in `pins.sh` say which image and commits they match.
+Set `PREFIX` or `SRC` to use other locations, and `DATA_ROOT` to keep `run.sh`'s `models/`, `datasets/` and `runs/` somewhere other than the repo root. The pins in `pins.sh` say which image and commits they match.
 
 ### Cloud Install
 

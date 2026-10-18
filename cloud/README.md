@@ -6,7 +6,7 @@ The host needs an NVIDIA driver of 580 or later and a CUDA 13 toolkit in `/usr/l
 
     bash cloud/install.sh 2>&1 | tee install.log
 
-`run.sh` and `verify.sh` work unchanged, and `run.sh` still trains on one GPU. Run them with `bash` too if the checkout has lost its exec bits (see below).
+`run.sh` and `verify.sh` work unchanged, and `run.sh` still trains on one GPU. If `/workspace` is a network volume that local disk doesn't outlive, see below.
 
 ## CUDA 13 Toolkit
 
@@ -20,8 +20,22 @@ Some images already list the same repo without `signed-by`; with both entries, `
 
 Some cloud containers mount `/workspace` as a FUSE volume over object storage (`geesefs`, for one) that can't set file permissions or make hard links, and point `UV_CACHE_DIR` and `PIP_CACHE_DIR` at it. Files there can't be made executable, so a venv can't live there, and neither can uv's cache. Check with `mount | grep /workspace`.
 
-The installer moves such caches to `~/.cache`, but it stops if `PREFIX` is on one of these volumes, because the venv would default to one inside a checkout there. Keep the repo on the volume if you like, and put the venv and sources on local disk:
+The installer moves such caches to `~/.cache`, but it stops if `PREFIX` is on one of these volumes. Clone the repo onto local disk instead, so the venv and sources go in it as usual, and keep the data on the volume: `run.sh` puts `models/`, `datasets/` and `runs/` under `DATA_ROOT`, which defaults to the repo root.
 
-    PREFIX=/root/miles/.venv SRC=/root/miles/miles-src bash cloud/install.sh 2>&1 | tee install.log
+    git clone https://github.com/belambert/miles-dgx-spark.git /root/miles-dgx-spark
+    cd /root/miles-dgx-spark
+    bash cloud/install.sh 2>&1 | tee install.log
+    export DATA_ROOT=/workspace/miles-data
+    ./run.sh prepare Qwen3.5-2B && ./run.sh qwen35-2b
 
-Pass the same `PREFIX` and `SRC` to `run.sh` and `verify.sh`. Local disk in a container is often the root overlay, which may be small (30 GB on one A100 machine) and is lost when the container is recreated.
+Local disk in a container is often the root overlay, which may be small (30 GB on one A100 machine) and is lost when the container is recreated; on RunPod, stopping a pod wipes it too. Checkpoints write to the volume fine but slowly: about 140 MB/s on one RunPod volume, so 2.5 minutes for the 2B's 22 GB, against 25 s on local disk.
+
+To skip the rebuild after a stop, archive the venv and sources onto the volume once the install finishes; it's about 8 GB, from 21 GB, and takes 3 minutes:
+
+    DATA_ROOT=/workspace/miles-data bash cloud/snapshot.sh save
+
+After a restart, clone the repo to the same path again; `restore` reinstalls CUDA 13 if it's gone, unpacks the venv and sources to the same paths and runs `verify.sh`:
+
+    DATA_ROOT=/workspace/miles-data bash cloud/snapshot.sh restore
+
+The archive is `$DATA_ROOT/snapshot/miles-env.tar.zst`. Save again after changing the venv.
