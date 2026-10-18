@@ -4,23 +4,23 @@ Non-Docker install of [Miles](https://github.com/radixark/miles) for a DGX Spark
 
 ## Compromises
 
-This runs the upstream [quick start](https://github.com/radixark/miles/blob/main/docs/getting-started/quick-start.md) on one Spark, which takes some changes. "Where" says which launch carries each change: the Quick Start command below (all), `smoke.sh` (smoke), `smoke-thinking.sh` (thinking), or `smoke-small.sh` (small); the other smoke scripts build on `smoke.sh`.
+This runs the upstream [quick start](https://github.com/radixark/miles/blob/main/docs/getting-started/quick-start.md) on one Spark, which takes some changes. "Where" says which `run.sh` presets carry each change (see Quick Start).
 
-| Setting             | Upstream quick start               | Here                                                  | Where           | Why                                                 |
-|---------------------|------------------------------------|-------------------------------------------------------|-----------------|-----------------------------------------------------|
-| Install             | Docker image                       | host venv; TE, apex, flash-attn copied from the image | all             | Non-Docker install                                  |
-| Model               | Qwen3-4B                           | Qwen3-0.6B                                            | all             | Fits one GPU with TP 1                              |
-| GPUs                | 8 (TP 2, 4 SGLang engines)         | 1 (TP 1, 1 engine)                                    | all             | A Spark has one GB10                                |
-| Attention           | FlashAttention via TE              | TE patched to use FA2, not FA4                        | all             | TE + FA4 gives wrong attention (TE#3528)            |
-| Rollouts            | 3000                               | 20                                                    | smoke           | A quick end-to-end check                            |
-| AIME eval           | before training, every 20 rollouts | off                                                   | smoke           | The first eval alone takes hours                    |
-| Prompts per rollout | 32 (256 samples)                   | 8 (64 samples)                                        | small, thinking | 256 long samples overflow the KV cache              |
-| Global batch        | 256                                | 64                                                    | small, thinking | Matches the smaller rollout                         |
-| Max response        | 8192 tokens                        | 2048 tokens                                           | small           | Keeps rollouts under a minute                       |
-| Qwen3 thinking      | on                                 | off                                                   | small           | Thinking runs past 2k tokens, so all rewards were 0 |
-| Reward              | `deepscaler`                       | `math`                                                | small           | `deepscaler` needs `</think>` in the response       |
+| Setting             | Upstream quick start               | Here                                                  | Where                        | Why                                                 |
+|---------------------|------------------------------------|-------------------------------------------------------|------------------------------|-----------------------------------------------------|
+| Install             | Docker image                       | host venv; TE, apex, flash-attn copied from the image | all                          | Non-Docker install                                  |
+| Model               | Qwen3-4B                           | Qwen3-0.6B, Qwen3.5-0.8B/2B/4B                        | all                          | Fits one GPU with TP 1                              |
+| GPUs                | 8 (TP 2, 4 SGLang engines)         | 1 (TP 1, 1 engine)                                    | all                          | A Spark has one GB10                                |
+| Attention           | FlashAttention via TE              | TE patched to use FA2, not FA4                        | all                          | TE + FA4 gives wrong attention (TE#3528)            |
+| Rollouts            | 3000                               | 20                                                    | all but `quickstart`         | A quick end-to-end check                            |
+| AIME eval           | before training, every 20 rollouts | off                                                   | all but `quickstart`         | The first eval alone takes hours                    |
+| Prompts per rollout | 32 (256 samples)                   | 8 (64 samples)                                        | all but `quickstart`, `full` | 256 long samples overflow the KV cache              |
+| Global batch        | 256                                | 64                                                    | all but `quickstart`, `full` | Matches the smaller rollout                         |
+| Max response        | 8192 tokens                        | 2048–4096 tokens                                      | no-thinking presets          | Keeps rollouts under a minute                       |
+| Qwen3 thinking      | on                                 | off                                                   | no-thinking presets          | Thinking runs past 2k tokens, so all rewards were 0 |
+| Reward              | `deepscaler`                       | `math`                                                | no-thinking presets          | `deepscaler` needs `</think>` in the response       |
 
-So the full Quick Start command differs from upstream only in model size, GPU count and the attention fix, but on one Spark its rollouts take 40+ minutes and its first eval several hours. Only `smoke-small.sh` runs in minutes, and it trains a different setup: short, non-thinking answers graded by a different reward.
+So the `quickstart` preset differs from upstream only in model size, GPU count and the attention fix, but on one Spark its rollouts take 40+ minutes and its first eval several hours. The presets that run in minutes train a different setup: short, non-thinking answers graded by a different reward.
 
 ## Usage
 
@@ -45,95 +45,41 @@ This is the upstream [quick start](https://github.com/radixark/miles/blob/main/d
 | Eval            | [zhuzilin/aime-2024](https://huggingface.co/datasets/zhuzilin/aime-2024)         | AIME 2024 problems, evaluated on but not trained  |
 | Training (easy) | [zhuzilin/gsm8k](https://huggingface.co/datasets/zhuzilin/gsm8k)                 | 7.5k grade-school word problems, for small models |
 
-Activate the venv and name the directories:
+Download a model and the datasets, and convert the model to Megatron's `torch_dist` format. The rollout engine reads the Hugging Face copy, so both are kept. The conversion needs the GPU, so stop any running job first:
 
-    source .venv/bin/activate
-    HERE=$PWD MODELS=$PWD/models DATA=$PWD/datasets
+    ./run.sh prepare Qwen3-0.6B
 
-Download the model, the training prompts and the eval benchmark:
+Then train with a preset:
 
-    hf download Qwen/Qwen3-0.6B --local-dir $MODELS/Qwen3-0.6B
-    hf download --repo-type dataset zhuzilin/dapo-math-17k --local-dir $DATA/dapo-math-17k
-    hf download --repo-type dataset zhuzilin/aime-2024 --local-dir $DATA/aime-2024
-    hf download --repo-type dataset zhuzilin/gsm8k --local-dir $DATA/gsm8k
+    ./run.sh qwen3-small
 
-Convert the weights to Megatron's `torch_dist` format. Keep the HuggingFace directory, because the rollout engine reads it:
+`run.sh` launches Miles' `scripts/run_qwen3_dense.py` with the preset's settings. Each preset is one line near the top of the script, and any setting (`MODEL`, `DATASET`, `THINKING`, `MAX_LEN`, `PROMPTS`, `ROLLOUTS`, `EVAL`, `SGLANG_MEM`, `REWARD`, ...) can be overridden from the environment, for example `MAX_LEN=16384 ./run.sh qwen35-thinking`. Arguments after the preset go to the launcher. The first line it prints sums up the run. Every rollout has 8 samples per prompt.
 
-    cd miles-src/miles
-    MODEL_ARGS=$(python miles/utils/external_utils/model_args_utils.py qwen3-0.6B)
-    PYTHONPATH=$HERE/miles-src/Megatron-LM python tools/convert_hf_to_torch_dist.py $MODEL_ARGS \
-        --hf-checkpoint $MODELS/Qwen3-0.6B --save $MODELS/Qwen3-0.6B_torch_dist
+| Preset            | Model        | Data  | Thinking | Max response | Prompts | Notes                                                             |
+|-------------------|--------------|-------|----------|--------------|---------|-------------------------------------------------------------------|
+| `quickstart`      | Qwen3-0.6B   | dapo  | on       | 8192         | 32      | Upstream recipe: 3000 rollouts, AIME eval; hours per rollout here |
+| `full`            | Qwen3-0.6B   | dapo  | on       | 8192         | 32      | 20 rollouts, no eval; overflows the KV cache, 40+ min per rollout |
+| `qwen3-small`     | Qwen3-0.6B   | dapo  | off      | 2048         | 8       | The fast end-to-end check: ~40 s per iteration, reward ~0.07      |
+| `qwen3-thinking`  | Qwen3-0.6B   | dapo  | on       | 8192         | 8       | 17 min rollouts, reward ~0.09                                     |
+| `qwen35-thinking` | Qwen3.5-0.8B | dapo  | on       | 8192         | 8       | 5 min rollouts, but 94% cut off mid-thought, reward 0             |
+| `qwen35-dapo`     | Qwen3.5-0.8B | dapo  | off      | 4096         | 8       | Never finishes a dapo problem, reward 0                           |
+| `qwen35-gsm8k`    | Qwen3.5-0.8B | gsm8k | off      | 2048         | 8       | Easier problems for the 0.8B                                      |
+| `qwen35-2b`       | Qwen3.5-2B   | dapo  | off      | 4096         | 8       | Untested                                                          |
+| `qwen35-4b`       | Qwen3.5-4B   | dapo  | off      | 4096         | 8       | Reward 0.41, but out of memory in its first optimizer step        |
 
-Launch GRPO training. Keep the recipe's `flash` attention backend. Transformer Engine would pick FlashAttention 4 (an SGLang dependency) and pass it a causal window that FA4 4.0.0b30+ reads as empty, giving wrong attention ([TransformerEngine#3528](https://github.com/NVIDIA/TransformerEngine/issues/3528), fix pending in [#3570](https://github.com/NVIDIA/TransformerEngine/pull/3570)). So `install.sh` patches TE to use FlashAttention 2 on the GB10 instead. Don't use `auto`: it picks cuDNN fused attention, which can't run the backward pass on packed sequences:
+Each preset writes to `runs/<preset>` and resumes from the checkpoint there, so a finished run won't train again; delete its directory to start over, for example `rm -rf runs/qwen3-small`. A checkpoint with optimizer state is about 8 GB for the 0.6B and 50–60 GB for the 4B. Each run also saves every rollout's prompts, responses and rewards in `runs/<preset>/dump_details/trajectory/<rollout>.jsonl`, so you can read what the model wrote. Don't send requests to the running SGLang engine to check outputs instead: it releases its GPU memory during each training step, and a request arriving then crashes the run. Set `WANDB_API_KEY` to log to wandb.
 
-    python scripts/run_qwen3_dense.py --model-name Qwen3-0.6B --num-gpus-per-node 1 \
-        --model-dir $MODELS --data-dir $DATA --output-dir $HERE/runs/quickstart \
-        --megatron-path $HERE/miles-src/Megatron-LM
+### Why the Presets Look Like This
 
-Checkpoints land in `./runs/quickstart/checkpoints` every 20 rollouts, and rerunning the launch command resumes from the last one. Set `WANDB_API_KEY` to log to wandb. Watch `rollout/raw_reward` in the output climb.
+**Attention.** Keep the recipe's `flash` attention backend. Transformer Engine would pick FlashAttention 4 (an SGLang dependency) and pass it a causal window that FA4 4.0.0b30+ reads as empty, giving wrong attention ([TransformerEngine#3528](https://github.com/NVIDIA/TransformerEngine/issues/3528), fix pending in [#3570](https://github.com/NVIDIA/TransformerEngine/pull/3570)). So `install.sh` patches TE to use FlashAttention 2 on the GB10 instead. Don't use `auto`: it picks cuDNN fused attention, which can't run the backward pass on packed sequences.
 
-The full recipe runs 3000 rollouts and starts with an AIME eval that takes hours on one Spark. For a quick end-to-end check, `smoke.sh` runs the same launch with 20 rollouts and no eval:
+**Thinking.** Qwen3's thinking runs past 2k tokens: with it on, nearly every response was truncated before reaching an answer, every reward was 0, and GRPO had nothing to learn from. Without thinking, Qwen3-0.6B's responses average 600–800 tokens and none are truncated.
 
-    ./smoke.sh
+**Reward.** Turning thinking off means switching the reward from the recipe's `deepscaler` to `math`, which `run.sh` does automatically. `deepscaler` only grades the text after `</think>` and scores 0 when there isn't one. With thinking off, Qwen's chat template puts an empty `<think></think>` block in the prompt, so responses never contain `</think>` and every answer scored 0, right or wrong. `math` grades the last `\boxed{}` answer anywhere in the response, which is the format the prompts ask for.
 
-`smoke.sh` keeps the recipe's batch: 256 samples of up to 8k tokens, which overflow SGLang's KV cache and take 40+ minutes per rollout. `smoke-small.sh` runs 64 samples of up to 2k tokens with more memory for the cache and Qwen3's thinking turned off, for about 40 seconds per iteration:
+**Qwen3.5.** 18 of Qwen3.5-0.8B's 24 layers use linear attention, which keeps a fixed-size state instead of a growing KV cache, so it stores about 12 KB per token against Qwen3-0.6B's 112 KB, and long rollouts run about 3× faster. But Qwen3.5 writes much longer answers. With thinking on, 73% were still cut off at 16k. Even without thinking it reasons step by step in the visible answer: offline samples on dapo ran to 4k every time without converging, so the 0.8B gets GSM8K instead. `run.sh` turns off SGLang's prefix cache for Qwen3.5, which kept about 3 linear-attention state slots per request and capped concurrency (19 of 64 for the 4B); prefix hits are only about 4% anyway. Log-probs are computed in chunks, because unchunked, one 16k sequence over Qwen3.5's 248k-token vocabulary needs 15 GiB of FP32 logits.
 
-    ./smoke-small.sh
-
-Each launch keeps its checkpoints in its own directory (`runs/quickstart`, `runs/smoke`, `runs/smoke-small`, `runs/smoke-thinking`, `runs/smoke-thinking-qwen35`, `runs/smoke-thinking-qwen35-16k`, `runs/smoke-thinking-qwen35-2b`, `runs/smoke-small-qwen35-4b`, `runs/smoke-small-qwen35`, `runs/smoke-small-qwen35-gsm8k`), because a run resumes from whatever checkpoint its directory holds. A finished smoke run therefore won't train again; delete its directory to start over, for example `rm -rf runs/smoke-small`. Each checkpoint of the 0.6B model is about 8 GB.
-
-Every smoke script saves each rollout's prompts, responses and rewards under its output directory, in `dump_details/trajectory/<rollout>.jsonl`, so you can read what the model actually wrote. Don't send requests to the running SGLang engine to check outputs: it releases its GPU memory during each training step, and a request arriving then crashes the run.
-
-`smoke-thinking.sh` sits in between: `smoke-small.sh`'s batch and cache size, but thinking on, 8k-token responses and the recipe's `deepscaler` reward. It checks the thinking path, including training on long sequences, at an estimated 5–10 minutes per rollout:
-
-    ./smoke-thinking.sh
-
-`smoke-thinking-qwen35.sh` runs the same test on [Qwen3.5-0.8B](https://huggingface.co/Qwen/Qwen3.5-0.8B). 18 of its 24 layers use linear attention, which keeps a fixed-size state instead of a growing KV cache, so it stores about 12 KB per token against Qwen3-0.6B's 112 KB. Long thinking rollouts are limited by reading that cache, so they should run faster. Download and convert it first; the conversion needs the GPU free, so stop any running job:
-
-    hf download Qwen/Qwen3.5-0.8B --local-dir $MODELS/Qwen3.5-0.8B
-    cd miles-src/miles
-    MODEL_ARGS=$(python miles/utils/external_utils/model_args_utils.py qwen3.5-0.8B)
-    PYTHONPATH=$HERE/miles-src/Megatron-LM python tools/convert_hf_to_torch_dist.py $MODEL_ARGS \
-        --hf-checkpoint $MODELS/Qwen3.5-0.8B --save $MODELS/Qwen3.5-0.8B_torch_dist
-    cd $HERE
-    ./smoke-thinking-qwen35.sh
-
-At 8k, Qwen3.5-0.8B's answers nearly all ran out of room while still thinking (see Measurements). `smoke-thinking-qwen35-16k.sh` doubles the cap, and computes log-probs in 4k-token chunks: unchunked, the FP32 logits for one 16k sequence over Qwen3.5's 248k-token vocabulary take 15 GiB, which ran out of memory. Even at 16k, 73% of answers were cut off and every reward was 0:
-
-    ./smoke-thinking-qwen35-16k.sh
-
-`smoke-thinking-qwen35-2b.sh` runs the 16k test on [Qwen3.5-2B](https://huggingface.co/Qwen/Qwen3.5-2B), which has the same layer layout and KV cache per token with twice the hidden size. Download and convert it the same way, with the GPU free:
-
-    hf download Qwen/Qwen3.5-2B --local-dir $MODELS/Qwen3.5-2B
-    cd miles-src/miles
-    MODEL_ARGS=$(python miles/utils/external_utils/model_args_utils.py qwen3.5-2B)
-    PYTHONPATH=$HERE/miles-src/Megatron-LM python tools/convert_hf_to_torch_dist.py $MODEL_ARGS \
-        --hf-checkpoint $MODELS/Qwen3.5-2B --save $MODELS/Qwen3.5-2B_torch_dist
-    cd $HERE
-    ./smoke-thinking-qwen35-2b.sh
-
-`smoke-small-qwen35-4b.sh` runs `smoke-small.sh`'s non-thinking test on [Qwen3.5-4B](https://huggingface.co/Qwen/Qwen3.5-4B), a much stronger model, using Miles' own 4B recipe overridden to one GPU (TP 1). Memory is the constraint: on the GB10, CPU and GPU share one memory pool, so offloading the trainer between steps frees nothing, and the trainer's weights, gradients and Adam state (about 16 bytes per parameter, so about 64 GB) must fit alongside SGLang. The first attempt (SGLang at 0.3, 2k cap) ran out of memory in the log-prob pass before its first training step, with only 40 GB held by the trainer itself; its one rollout scored 0.27, against about 0.07 for the 0.6B, though 72% of answers hit 2k. The script now uses a 4k cap, smaller training micro-batches (`--max-tokens-per-gpu 4096`), chunked log-probs, BF16 Adam moments (Megatron's precision-aware optimizer), and no SGLang prefix cache, which held about 3 linear-attention state slots per request and capped concurrency at 19 of 64. Whether it fits is untested. A saved checkpoint, with optimizer state, is roughly 50–60 GB. Download and convert it first, with the GPU free:
-
-    hf download Qwen/Qwen3.5-4B --local-dir $MODELS/Qwen3.5-4B
-    cd miles-src/miles
-    MODEL_ARGS=$(python miles/utils/external_utils/model_args_utils.py qwen3.5-4B)
-    PYTHONPATH=$HERE/miles-src/Megatron-LM python tools/convert_hf_to_torch_dist.py $MODEL_ARGS \
-        --hf-checkpoint $MODELS/Qwen3.5-4B --save $MODELS/Qwen3.5-4B_torch_dist
-    cd $HERE
-    ./smoke-small-qwen35-4b.sh
-
-`smoke-small-qwen35.sh` runs the same non-thinking test on Qwen3.5-0.8B, or on the 2B with `--model-name Qwen3.5-2B`, with a 4k cap: even without thinking, Qwen3.5 writes long step-by-step solutions, and at 2k, 92–98% of the 0.8B's answers were cut off and every reward was 0. Pass `--output-dir` too when switching models, since a run resumes from whatever checkpoint its directory holds:
-
-    ./smoke-small-qwen35.sh
-    ./smoke-small-qwen35.sh --model-name Qwen3.5-2B --output-dir $HERE/runs/smoke-small-qwen35-2b
-
-Even at 4k, Qwen3.5-0.8B never finishes a dapo-math problem. Offline samples ran to the cap every time, reasoning coherently but never converging, so every reward is 0. `smoke-small-qwen35-gsm8k.sh` trains it on GSM8K instead, which small models can solve in a few hundred tokens, with a 2k cap:
-
-    ./smoke-small-qwen35-gsm8k.sh
-
-Thinking is off because Qwen3's thinking runs past 2k tokens: with it on, nearly every response was truncated before reaching an answer, every reward was 0, and GRPO had nothing to learn from. Without thinking, responses average 600–800 tokens and none are truncated.
-
-Turning thinking off also means switching the reward from the recipe's `deepscaler` to `math`. `deepscaler` only grades the text after `</think>` and scores 0 when there isn't one. With thinking off, Qwen3's chat template puts an empty `<think></think>` block in the prompt, so responses never contain `</think>` and every answer scored 0, right or wrong. `math` grades the last `\boxed{}` answer anywhere in the response, which is the format the dataset's prompts ask for.
+**Memory.** On the GB10, CPU and GPU share one memory pool, so the trainer's state "offloaded" between steps still takes memory, and its weights, gradients and Adam state (about 16 bytes per parameter) must fit alongside SGLang. `LOW_MEM=1` stores Adam's moments in BF16. The 4B preset also lowers SGLang to 0.3 and halves the training micro-batch, yet still ran out of memory in its first optimizer step, with about 71 GB held outside the trainer.
 
 The launcher starts a local Ray cluster. Before that it kills any running `sglang`, `ray` and `redis` processes, including ones serving from other envs.
 
@@ -145,14 +91,14 @@ The Ray dashboard listens only on the Spark's localhost, port 8265. To view it f
 
 Runs on one Spark (2026-10-17), with the TE patch unless noted. "KL" is `train/train_rollout_kl`, the gap between SGLang's and Megatron's log-probs for the same tokens; near zero means training sees the same model SGLang sampled from. Reward is the fraction of answers graded correct per rollout.
 
-| Launch                     | Model        | Samples | Max response | Thinking | Rollout                      | Train step | Mean response | Truncated | Reward         | KL     |
-|----------------------------|--------------|---------|--------------|----------|------------------------------|------------|---------------|-----------|----------------|--------|
-| `smoke.sh`                 | Qwen3-0.6B   | 256     | 8192         | on       | not finished, est. 40–50 min | –          | –             | –         | –              | –      |
-| `smoke-thinking.sh`        | Qwen3-0.6B   | 64      | 8192         | on       | 17 min                       | 99 s       | 7410          | 66%       | 0.094          | 0.0007 |
-| `smoke-thinking-qwen35.sh` | Qwen3.5-0.8B | 64      | 8192         | on       | 5.3 min                      | 151 s      | 7756–7953     | 94%       | 0.0            | 0.0005 |
-| `smoke-small.sh`           | Qwen3-0.6B   | 64      | 2048         | off      | 21–38 s                      | 10–14 s    | 640–1005      | 0–5%      | 0.067 (0–0.17) | 0.0005 |
+| Preset            | Model        | Samples | Max response | Thinking | Rollout                      | Train step | Mean response | Truncated | Reward         | KL     |
+|-------------------|--------------|---------|--------------|----------|------------------------------|------------|---------------|-----------|----------------|--------|
+| `full`            | Qwen3-0.6B   | 256     | 8192         | on       | not finished, est. 40–50 min | –          | –             | –         | –              | –      |
+| `qwen3-thinking`  | Qwen3-0.6B   | 64      | 8192         | on       | 17 min                       | 99 s       | 7410          | 66%       | 0.094          | 0.0007 |
+| `qwen35-thinking` | Qwen3.5-0.8B | 64      | 8192         | on       | 5.3 min                      | 151 s      | 7756–7953     | 94%       | 0.0            | 0.0005 |
+| `qwen3-small`     | Qwen3-0.6B   | 64      | 2048         | off      | 21–38 s                      | 10–14 s    | 640–1005      | 0–5%      | 0.067 (0–0.17) | 0.0005 |
 
-`smoke.sh` overflows SGLang's KV cache: throughput fell from about 1,700 to 580 tokens/s as requests were evicted and requeued, and the first rollout never finished. `smoke-thinking.sh` keeps its 64 answers in the cache (0.7 memory fraction holds about 600k tokens), but throughput still falls from about 1,400 to 300 tokens/s as answers grow, because every decode step reads the whole cache. `smoke-small.sh` runs 20 rollouts in about 20 minutes; its reward stays flat, as expected for so few steps.
+`full` overflows SGLang's KV cache: throughput fell from about 1,700 to 580 tokens/s as requests were evicted and requeued, and the first rollout never finished. `qwen3-thinking` keeps its 64 answers in the cache (0.7 memory fraction holds about 600k tokens), but throughput still falls from about 1,400 to 300 tokens/s as answers grow, because every decode step reads the whole cache. `qwen3-small` runs 20 rollouts in about 20 minutes; its reward stays flat, as expected for so few steps.
 
 Qwen3.5-0.8B generates the same 64 thinking answers 3.3× faster than Qwen3-0.6B (5.3 vs 17 minutes): with linear attention in 18 of 24 layers, its throughput only falls from about 2,200 to 1,150 tokens/s over a rollout. Its training step is slower (151 s, after a one-time 190 s while Triton kernels compile, against 99 s), but a full iteration still takes 10.5 minutes against about 19. It thinks longer, though: 94% of answers hit 8k before finishing, so every reward was 0 and there was nothing to learn. Training it with thinking on needs a longer cap.
 
