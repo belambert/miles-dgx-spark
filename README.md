@@ -64,17 +64,17 @@ Then train with a preset:
 
 `EVAL=aime` is the recipe's AIME eval, which `quickstart` uses; it takes hours per eval here.
 
-| Preset            | Model        | Data  | Thinking | Max response | Prompts | Notes                                                             |
-|-------------------|--------------|-------|----------|--------------|---------|-------------------------------------------------------------------|
-| `quickstart`      | Qwen3-0.6B   | dapo  | on       | 8192         | 32      | Upstream recipe: 3000 rollouts, AIME eval; hours per rollout here |
-| `full`            | Qwen3-0.6B   | dapo  | on       | 8192         | 32      | 20 rollouts, no eval; overflows the KV cache, 40+ min per rollout |
-| `qwen3-small`     | Qwen3-0.6B   | dapo  | off      | 2048         | 8       | The fast end-to-end check: ~40 s per iteration, reward ~0.07      |
-| `qwen3-thinking`  | Qwen3-0.6B   | dapo  | on       | 8192         | 8       | 17 min rollouts, reward ~0.09                                     |
-| `qwen35-thinking` | Qwen3.5-0.8B | dapo  | on       | 8192         | 8       | 5 min rollouts, but 94% cut off mid-thought, reward 0             |
-| `qwen35-dapo`     | Qwen3.5-0.8B | dapo  | off      | 4096         | 8       | Never finishes a dapo problem, reward 0                           |
-| `qwen35-gsm8k`    | Qwen3.5-0.8B | gsm8k | off      | 2048         | 8       | ~1 min per iteration, reward 0.36–0.63                            |
-| `qwen35-2b`       | Qwen3.5-2B   | dapo  | off      | 4096         | 8       | Untested                                                          |
-| `qwen35-4b`       | Qwen3.5-4B   | dapo  | off      | 4096         | 8       | Reward 0.41, but out of memory in its first optimizer step        |
+| Preset            | Model        | Data  | Thinking | Max response | Prompts | Notes                                                                    |
+|-------------------|--------------|-------|----------|--------------|---------|--------------------------------------------------------------------------|
+| `quickstart`      | Qwen3-0.6B   | dapo  | on       | 8192         | 32      | Upstream recipe: 3000 rollouts, AIME eval; hours per rollout here        |
+| `full`            | Qwen3-0.6B   | dapo  | on       | 8192         | 32      | 20 rollouts, no eval; overflows the KV cache, 40+ min per rollout        |
+| `qwen3-small`     | Qwen3-0.6B   | dapo  | off      | 2048         | 8       | The fast end-to-end check: ~40 s per iteration, reward ~0.07             |
+| `qwen3-thinking`  | Qwen3-0.6B   | dapo  | on       | 8192         | 8       | 17 min rollouts, reward ~0.09                                            |
+| `qwen35-thinking` | Qwen3.5-0.8B | dapo  | on       | 8192         | 8       | 5 min rollouts, but 94% cut off mid-thought, reward 0                    |
+| `qwen35-dapo`     | Qwen3.5-0.8B | dapo  | off      | 4096         | 8       | Never finishes a dapo problem, reward 0                                  |
+| `qwen35-gsm8k`    | Qwen3.5-0.8B | gsm8k | off      | 2048         | 8       | ~1 min per iteration, reward 0.36–0.63                                   |
+| `qwen35-2b`       | Qwen3.5-2B   | dapo  | off      | 4096         | 8       | Fits in memory; ~4.5 min per iteration, 84–95% cut off, reward 0.02–0.13 |
+| `qwen35-4b`       | Qwen3.5-4B   | dapo  | off      | 4096         | 8       | Reward 0.41, but out of memory in its first optimizer step               |
 
 Each preset writes to `runs/<preset>` and resumes from the checkpoint there, so a finished run won't train again; delete its directory to start over, for example `rm -rf runs/qwen3-small`. A checkpoint with optimizer state is about 8 GB for the 0.6B and 50–60 GB for the 4B. Each run also saves every rollout's samples in `runs/<preset>/dump_details/rollout_data/<rollout>.pt`, so you can read what the model wrote:
 
@@ -111,12 +111,15 @@ Runs on one Spark (2026-10-17), with the TE patch unless noted. "KL" is `train/t
 | `qwen35-thinking` | Qwen3.5-0.8B | 64      | 8192         | on       | 5.3 min                      | 151 s      | 7756–7953     | 94%       | 0.0            | 0.0005 |
 | `qwen3-small`     | Qwen3-0.6B   | 64      | 2048         | off      | 21–38 s                      | 10–14 s    | 640–1005      | 0–5%      | 0.067 (0–0.17) | 0.0005 |
 | `qwen35-gsm8k`    | Qwen3.5-0.8B | 64      | 2048         | off      | 25–42 s                      | 14–23 s    | 536–1105      | 6–39%     | 0.42 → 0.45    | 0.0004 |
+| `qwen35-2b`       | Qwen3.5-2B   | 64      | 4096         | off      | 172–178 s                    | 95–105 s   | 3671–4001     | 84–95%    | 0.016–0.125    | 0.0004 |
 
 `full` overflows SGLang's KV cache: throughput fell from about 1,700 to 580 tokens/s as requests were evicted and requeued, and the first rollout never finished. `qwen3-thinking` keeps its 64 answers in the cache (0.7 memory fraction holds about 600k tokens), but throughput still falls from about 1,400 to 300 tokens/s as answers grow, because every decode step reads the whole cache. `qwen3-small` runs 20 rollouts in about 20 minutes; its reward stays flat, as expected for so few steps.
 
 Qwen3.5-0.8B generates the same 64 thinking answers 3.3× faster than Qwen3-0.6B (5.3 vs 17 minutes): with linear attention in 18 of 24 layers, its throughput only falls from about 2,200 to 1,150 tokens/s over a rollout. Its training step is slower (151 s, after a one-time 190 s while Triton kernels compile, against 99 s), but a full iteration still takes 10.5 minutes against about 19. It thinks longer, though: 94% of answers hit 8k before finishing, so every reward was 0 and there was nothing to learn. Training it with thinking on needs a longer cap.
 
 On GSM8K, Qwen3.5-0.8B finally gets a learning signal: 28–66% of answers are correct and `grad_norm` is 1.2–2.4 on every step, against 0 on dapo. Over 20 rollouts the mean reward went from 0.42 (rollouts 0–9) to 0.45 (10–19), within noise for 8 prompts per rollout. Rollouts with fewer answers cut off at 2k score higher, so a 4k cap would likely help. The data column of the table is dapo except for this row.
+
+Qwen3.5-2B is the largest Qwen3.5 model that trains on one Spark with these settings (the 4B runs out of memory), though system memory is nearly exhausted during its run. On dapo it writes long answers like the 0.8B: 84–95% hit 4k, for a weak signal (1 and 8 correct of 64 in its first two rollouts).
 
 Training-step time by attention backend, on the 64-sample, 2k-token batch with thinking on:
 
