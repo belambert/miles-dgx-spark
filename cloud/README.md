@@ -8,6 +8,14 @@ The host needs an NVIDIA driver of 580 or later and a CUDA 13 toolkit in `/usr/l
 
 `run.sh` and `verify.sh` work unchanged, and `run.sh` still trains on one GPU. If `/workspace` is a network volume that local disk doesn't outlive, see below.
 
+## Inside the Miles Image
+
+On a machine started from the `radixark/miles` image itself, such as a pod using it as its container image, nothing needs building: the image's venv in `/opt/sglang` already has every package. `setup-in-image.sh` instead links `.venv` to that venv and `miles-src/sglang` and `miles-src/Megatron-LM` to the image's checkouts, clones our Miles fork into `miles-src/miles` and installs it in place of the image's `/root/miles`, applies the FlashAttention 4 fix, and runs `verify.sh`. It takes about a minute, and warns if the image's torch, SGLang, Megatron-LM or tvm-ffi differ from `pins.sh`:
+
+    bash cloud/setup-in-image.sh
+
+It won't replace a `.venv` or source directory that `install.sh` built. The image itself plays the part of a snapshot, so `snapshot.sh` isn't needed.
+
 ## CUDA 13 Toolkit
 
 Many cloud images ship only CUDA 12. On Ubuntu (x86_64 or aarch64), as root, `install-cuda.sh` adds NVIDIA's apt repo and installs the toolkit; it goes alongside any CUDA 12 install and leaves the driver alone:
