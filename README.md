@@ -37,7 +37,7 @@ Set `PREFIX` or `SRC` to use other locations, and `DATA_ROOT` to keep `run.sh`'s
 
 ### Cloud Install
 
-`cloud/install.sh` installs the same pins on a cloud GPU machine without Docker; see [cloud/README.md](cloud/README.md).
+`cloud/install.sh` installs the same pins on a cloud GPU machine without Docker, and `cloud/setup-in-image.sh` sets up the repo inside the `radixark/miles` image itself; see [cloud/README.md](cloud/README.md).
 
 ## Quick Start
 
