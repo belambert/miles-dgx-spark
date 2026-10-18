@@ -10,15 +10,11 @@ The host needs an NVIDIA driver of 580 or later and a CUDA 13 toolkit in `/usr/l
 
 ## CUDA 13 Toolkit
 
-Many cloud images ship only CUDA 12. On Ubuntu 24.04 (x86_64), as root, add NVIDIA's apt repo and install the toolkit; it goes alongside any CUDA 12 install and leaves the driver alone:
+Many cloud images ship only CUDA 12. On Ubuntu (x86_64 or aarch64), as root, `install-cuda.sh` adds NVIDIA's apt repo and installs the toolkit; it goes alongside any CUDA 12 install and leaves the driver alone:
 
-    wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb
-    dpkg -i cuda-keyring_1.1-1_all.deb && rm cuda-keyring_1.1-1_all.deb
-    rm -f /etc/apt/sources.list.d/cuda.list
-    apt-get update
-    DEBIAN_FRONTEND=noninteractive apt-get install -y cuda-toolkit-13-0
+    bash cloud/install-cuda.sh
 
-The `rm` of `cuda.list` is for images that already list the same repo without `signed-by`; with both entries, `apt-get update` fails with `Conflicting values set for option Signed-By`. If the image uses another file name, find it with `grep -rn developer.download.nvidia.com /etc/apt/sources.list.d/` and remove the entry without `signed-by=`. The toolkit takes about 7 GB and points `/usr/local/cuda` at 13.0. For another Ubuntu release or aarch64, change `ubuntu2404/x86_64` in the URL.
+Some images already list the same repo without `signed-by`; with both entries, `apt-get update` fails with `Conflicting values set for option Signed-By`, so the script removes any list in `/etc/apt/sources.list.d/` that names `developer.download.nvidia.com` without `signed-by=`. The toolkit takes about 7 GB and points `/usr/local/cuda` at 13.0. The script does nothing if `/usr/local/cuda` already has CUDA 13.
 
 ## Network Volumes
 
