@@ -54,7 +54,7 @@ The full recipe runs 3000 rollouts and starts with an AIME eval that takes hours
 
     ./smoke.sh
 
-`smoke.sh` keeps the recipe's batch: 256 samples of up to 8k tokens, which overflow SGLang's KV cache and take 40+ minutes per rollout. `smoke-small.sh` runs 64 samples of up to 2k tokens with more memory for the cache, for a few minutes per rollout:
+`smoke.sh` keeps the recipe's batch: 256 samples of up to 8k tokens, which overflow SGLang's KV cache and take 40+ minutes per rollout. `smoke-small.sh` runs 64 samples of up to 2k tokens with more memory for the cache and Qwen3's thinking turned off, for about two minutes per rollout:
 
     ./smoke-small.sh
 
