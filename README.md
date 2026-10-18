@@ -2,6 +2,26 @@
 
 Non-Docker install of [Miles](https://github.com/radixark/miles) for a DGX Spark (GB10, aarch64, CUDA 13).
 
+## Compromises
+
+This runs the upstream [quick start](https://github.com/radixark/miles/blob/main/docs/getting-started/quick-start.md) on one Spark, which takes some changes. "Where" says which launch carries each change: the Quick Start command below (all), `smoke.sh` (smoke), or only `smoke-small.sh` (small); each smoke script includes the changes above it.
+
+| Setting             | Upstream quick start               | Here                                                  | Where | Why                                                 |
+|---------------------|------------------------------------|-------------------------------------------------------|-------|-----------------------------------------------------|
+| Install             | Docker image                       | host venv; TE, apex, flash-attn copied from the image | all   | Non-Docker install                                  |
+| Model               | Qwen3-4B                           | Qwen3-0.6B                                            | all   | Fits one GPU with TP 1                              |
+| GPUs                | 8 (TP 2, 4 SGLang engines)         | 1 (TP 1, 1 engine)                                    | all   | A Spark has one GB10                                |
+| Attention           | FlashAttention via TE              | TE patched to use FA2, not FA4                        | all   | TE + FA4 gives wrong attention (TE#3528)            |
+| Rollouts            | 3000                               | 20                                                    | smoke | A quick end-to-end check                            |
+| AIME eval           | before training, every 20 rollouts | off                                                   | smoke | The first eval alone takes hours                    |
+| Prompts per rollout | 32 (256 samples)                   | 8 (64 samples)                                        | small | 256 long samples overflow the KV cache              |
+| Global batch        | 256                                | 64                                                    | small | Matches the smaller rollout                         |
+| Max response        | 8192 tokens                        | 2048 tokens                                           | small | Keeps rollouts under a minute                       |
+| Qwen3 thinking      | on                                 | off                                                   | small | Thinking runs past 2k tokens, so all rewards were 0 |
+| Reward              | `deepscaler`                       | `math`                                                | small | `deepscaler` needs `</think>` in the response       |
+
+So the full Quick Start command differs from upstream only in model size, GPU count and the attention fix, but on one Spark its rollouts take 40+ minutes and its first eval several hours. Only `smoke-small.sh` runs in minutes, and it trains a different setup: short, non-thinking answers graded by a different reward.
+
 ## Usage
 
 The installer clones the sources into `./miles-src` and builds a venv in `./.venv`. Miles comes from the `dgx-spark` branch of [our fork](https://github.com/belambert/miles/tree/dgx-spark), which adds a single-GPU Qwen3-0.6B recipe and an `--attention-backend` flag to `scripts/run_qwen3_dense.py`. The installer needs the pinned `radixark/miles` Docker image pulled locally, because a few compiled packages are copied out of it.
