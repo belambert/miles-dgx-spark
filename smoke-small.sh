@@ -5,6 +5,9 @@
 # That needs the math reward: deepscaler only grades text after </think>, which is now in the prompt.
 set -euo pipefail
 
-exec "$(dirname "$(readlink -f "$0")")/smoke.sh" \
+HERE=$(dirname "$(readlink -f "$0")")
+
+# own output dir: a run resumes from whatever checkpoint is there, and this setup differs from smoke.sh
+exec "$HERE/smoke.sh" --output-dir "$HERE/runs/smoke-small" \
   --extra-args "--rollout-max-response-len 2048 --rollout-batch-size 8 --global-batch-size 64 --sglang-mem-fraction-static 0.7 --apply-chat-template-kwargs '{\"enable_thinking\": false}' --rm-type math" \
   "$@"

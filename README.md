@@ -65,10 +65,10 @@ Convert the weights to Megatron's `torch_dist` format. Keep the HuggingFace dire
 Launch GRPO training. Keep the recipe's `flash` attention backend. Transformer Engine would pick FlashAttention 4 (an SGLang dependency) and pass it a causal window that FA4 4.0.0b30+ reads as empty, giving wrong attention ([TransformerEngine#3528](https://github.com/NVIDIA/TransformerEngine/issues/3528), fix pending in [#3570](https://github.com/NVIDIA/TransformerEngine/pull/3570)). So `install.sh` patches TE to use FlashAttention 2 on the GB10 instead. Don't use `auto`: it picks cuDNN fused attention, which can't run the backward pass on packed sequences:
 
     python scripts/run_qwen3_dense.py --model-name Qwen3-0.6B --num-gpus-per-node 1 \
-        --model-dir $MODELS --data-dir $DATA --output-dir $HERE/runs \
+        --model-dir $MODELS --data-dir $DATA --output-dir $HERE/runs/quickstart \
         --megatron-path $HERE/miles-src/Megatron-LM
 
-Checkpoints land in `./runs/checkpoints` every 20 rollouts, and rerunning the launch command resumes from the last one. Set `WANDB_API_KEY` to log to wandb. Watch `rollout/raw_reward` in the output climb.
+Checkpoints land in `./runs/quickstart/checkpoints` every 20 rollouts, and rerunning the launch command resumes from the last one. Set `WANDB_API_KEY` to log to wandb. Watch `rollout/raw_reward` in the output climb.
 
 The full recipe runs 3000 rollouts and starts with an AIME eval that takes hours on one Spark. For a quick end-to-end check, `smoke.sh` runs the same launch with 20 rollouts and no eval:
 
@@ -77,6 +77,8 @@ The full recipe runs 3000 rollouts and starts with an AIME eval that takes hours
 `smoke.sh` keeps the recipe's batch: 256 samples of up to 8k tokens, which overflow SGLang's KV cache and take 40+ minutes per rollout. `smoke-small.sh` runs 64 samples of up to 2k tokens with more memory for the cache and Qwen3's thinking turned off, for about 40 seconds per iteration:
 
     ./smoke-small.sh
+
+Each launch keeps its checkpoints in its own directory (`runs/quickstart`, `runs/smoke`, `runs/smoke-small`), because a run resumes from whatever checkpoint its directory holds. A finished smoke run therefore won't train again; delete its directory to start over, for example `rm -rf runs/smoke-small`. Each checkpoint of the 0.6B model is about 8 GB.
 
 Thinking is off because Qwen3's thinking runs past 2k tokens: with it on, nearly every response was truncated before reaching an answer, every reward was 0, and GRPO had nothing to learn from. Without thinking, responses average 600–800 tokens and none are truncated.
 
