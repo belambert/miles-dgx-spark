@@ -94,7 +94,7 @@ Each launch keeps its checkpoints in its own directory (`runs/quickstart`, `runs
     cd $HERE
     ./smoke-thinking-qwen35.sh
 
-At 8k, Qwen3.5-0.8B's answers nearly all ran out of room while still thinking (see Measurements). `smoke-thinking-qwen35-16k.sh` doubles the cap:
+At 8k, Qwen3.5-0.8B's answers nearly all ran out of room while still thinking (see Measurements). `smoke-thinking-qwen35-16k.sh` doubles the cap, and computes log-probs in 4k-token chunks: unchunked, the FP32 logits for one 16k sequence over Qwen3.5's 248k-token vocabulary take 15 GiB, which ran out of memory. Even at 16k, 73% of answers were cut off and every reward was 0:
 
     ./smoke-thinking-qwen35-16k.sh
 
