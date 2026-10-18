@@ -78,7 +78,7 @@ The full recipe runs 3000 rollouts and starts with an AIME eval that takes hours
 
     ./smoke-small.sh
 
-Each launch keeps its checkpoints in its own directory (`runs/quickstart`, `runs/smoke`, `runs/smoke-small`, `runs/smoke-thinking`, `runs/smoke-thinking-qwen35`, `runs/smoke-thinking-qwen35-16k`, `runs/smoke-thinking-qwen35-2b`, `runs/smoke-small-qwen35-4b`), because a run resumes from whatever checkpoint its directory holds. A finished smoke run therefore won't train again; delete its directory to start over, for example `rm -rf runs/smoke-small`. Each checkpoint of the 0.6B model is about 8 GB.
+Each launch keeps its checkpoints in its own directory (`runs/quickstart`, `runs/smoke`, `runs/smoke-small`, `runs/smoke-thinking`, `runs/smoke-thinking-qwen35`, `runs/smoke-thinking-qwen35-16k`, `runs/smoke-thinking-qwen35-2b`, `runs/smoke-small-qwen35-4b`, `runs/smoke-small-qwen35`), because a run resumes from whatever checkpoint its directory holds. A finished smoke run therefore won't train again; delete its directory to start over, for example `rm -rf runs/smoke-small`. Each checkpoint of the 0.6B model is about 8 GB.
 
 `smoke-thinking.sh` sits in between: `smoke-small.sh`'s batch and cache size, but thinking on, 8k-token responses and the recipe's `deepscaler` reward. It checks the thinking path, including training on long sequences, at an estimated 5–10 minutes per rollout:
 
@@ -117,6 +117,11 @@ At 8k, Qwen3.5-0.8B's answers nearly all ran out of room while still thinking (s
         --hf-checkpoint $MODELS/Qwen3.5-4B --save $MODELS/Qwen3.5-4B_torch_dist
     cd $HERE
     ./smoke-small-qwen35-4b.sh
+
+`smoke-small-qwen35.sh` runs the same non-thinking test on Qwen3.5-0.8B, or on the 2B with `--model-name Qwen3.5-2B`. Pass `--output-dir` too when switching models, since a run resumes from whatever checkpoint its directory holds:
+
+    ./smoke-small-qwen35.sh
+    ./smoke-small-qwen35.sh --model-name Qwen3.5-2B --output-dir $HERE/runs/smoke-small-qwen35-2b
 
 Thinking is off because Qwen3's thinking runs past 2k tokens: with it on, nearly every response was truncated before reaching an answer, every reward was 0, and GRPO had nothing to learn from. Without thinking, responses average 600–800 tokens and none are truncated.
 
