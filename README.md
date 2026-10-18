@@ -14,6 +14,7 @@ This runs the upstream [quick start](https://github.com/radixark/miles/blob/main
 | Attention           | FlashAttention via TE              | TE patched to use FA2, not FA4                        | all                          | TE + FA4 gives wrong attention (TE#3528)            |
 | Rollouts            | 3000                               | 20                                                    | all but `quickstart`         | A quick end-to-end check                            |
 | AIME eval           | before training, every 20 rollouts | off                                                   | all but `quickstart`         | The first eval alone takes hours                    |
+| Training data       | dapo-math-17k                      | GSM8K                                                 | `qwen35-gsm8k`               | Qwen3.5-0.8B never finishes a dapo problem          |
 | Prompts per rollout | 32 (256 samples)                   | 8 (64 samples)                                        | all but `quickstart`, `full` | 256 long samples overflow the KV cache              |
 | Global batch        | 256                                | 64                                                    | all but `quickstart`, `full` | Matches the smaller rollout                         |
 | Max response        | 8192 tokens                        | 2048–4096 tokens                                      | no-thinking presets          | Keeps rollouts under a minute                       |
@@ -38,12 +39,14 @@ Set `PREFIX` or `SRC` to use other locations. The pins at the top of `install.sh
 
 This is the upstream [quick start](https://github.com/radixark/miles/blob/main/docs/getting-started/quick-start.md) on one Spark, with Qwen3-0.6B instead of Qwen3-4B and everything kept under this repo instead of `/root`. Run the steps from the repo root.
 
-| Role            | Hugging Face repo                                                                | Contents                                          |
-|-----------------|----------------------------------------------------------------------------------|---------------------------------------------------|
-| Model           | [Qwen/Qwen3-0.6B](https://huggingface.co/Qwen/Qwen3-0.6B)                        | The policy being trained                          |
-| Training        | [zhuzilin/dapo-math-17k](https://huggingface.co/datasets/zhuzilin/dapo-math-17k) | 17k math problems with checkable answers          |
-| Eval            | [zhuzilin/aime-2024](https://huggingface.co/datasets/zhuzilin/aime-2024)         | AIME 2024 problems, evaluated on but not trained  |
-| Training (easy) | [zhuzilin/gsm8k](https://huggingface.co/datasets/zhuzilin/gsm8k)                 | 7.5k grade-school word problems, for small models |
+| Role            | Hugging Face repo                                                                | Original                                                                                                                                                  | Contents                                          |
+|-----------------|----------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------|
+| Model           | [Qwen/Qwen3-0.6B](https://huggingface.co/Qwen/Qwen3-0.6B)                        | –                                                                                                                                                         | The policy being trained                          |
+| Training        | [zhuzilin/dapo-math-17k](https://huggingface.co/datasets/zhuzilin/dapo-math-17k) | [BytedTsinghua-SIA/DAPO-Math-17k](https://huggingface.co/datasets/BytedTsinghua-SIA/DAPO-Math-17k), from the [DAPO](https://dapo-sia.github.io/) RL paper | 17k math problems with checkable answers          |
+| Eval            | [zhuzilin/aime-2024](https://huggingface.co/datasets/zhuzilin/aime-2024)         | [BytedTsinghua-SIA/AIME-2024](https://huggingface.co/datasets/BytedTsinghua-SIA/AIME-2024); problems from the MAA's AIME I and II                         | AIME 2024 problems, evaluated on but not trained  |
+| Training (easy) | [zhuzilin/gsm8k](https://huggingface.co/datasets/zhuzilin/gsm8k)                 | [openai/gsm8k](https://huggingface.co/datasets/openai/gsm8k)                                                                                              | 7.5k grade-school word problems, for small models |
+
+The `zhuzilin` copies are what Miles' recipes download: DAPO-Math-17k deduplicated from 1.79M rows (each problem repeated about 100 times) to 17,398, with prompts asking for `Answer: \boxed{...}` instead of `Answer: ...`; AIME-2024 with each of the 30 problems once instead of 32 times; and GSM8K with a chat-format `messages` column and a system prompt asking for `\boxed{}`.
 
 Download a model and the datasets, and convert the model to Megatron's `torch_dist` format. The rollout engine reads the Hugging Face copy, so both are kept. The conversion needs the GPU, so stop any running job first:
 
