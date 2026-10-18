@@ -91,6 +91,8 @@ fi
 echo "$preset: $MODEL on $DATASET, thinking $THINKING, ${MAX_LEN} tokens, $PROMPTS prompts x 8, $ROLLOUTS rollouts," \
   "eval $EVAL, reward $REWARD, SGLang $SGLANG_MEM -> $OUTPUT_DIR"
 
+# the launcher shells out to ray, hf and the router by name
+export PATH=$PREFIX/bin:$PATH
 cd "$SRC/miles"
 exec "$PREFIX/bin/python" scripts/run_qwen3_dense.py --model-name "$MODEL" --num-gpus-per-node 1 \
   --model-dir "$HERE/models" --data-dir "$HERE/datasets" --output-dir "$OUTPUT_DIR" \
