@@ -58,6 +58,12 @@ Then train with a preset:
 
 `run.sh` launches Miles' `scripts/run_qwen3_dense.py` with the preset's settings. Each preset is one line near the top of the script, and any setting (`MODEL`, `DATASET`, `THINKING`, `MAX_LEN`, `PROMPTS`, `ROLLOUTS`, `EVAL`, `SGLANG_MEM`, `REWARD`, ...) can be overridden from the environment, for example `MAX_LEN=16384 ./run.sh qwen35-thinking`. Arguments after the preset go to the launcher. The first line it prints sums up the run. Every rollout has 8 samples per prompt.
 
+`EVAL=gsm8k` scores the model on a fixed 256-problem slice of GSM8K's test set, before training and every `EVAL_EVERY` rollouts (default 10), with one sample per problem at the rollout temperature (1.0) and the training response cap. Unlike the rollout reward, which depends on which 8 training problems came up, this measures the same problems each time, so it shows whether training is helping. A longer run to check that:
+
+    EVAL=gsm8k MAX_LEN=4096 ROLLOUTS=200 ./run.sh qwen35-gsm8k
+
+`EVAL=aime` is the recipe's AIME eval, which `quickstart` uses; it takes hours per eval here.
+
 | Preset            | Model        | Data  | Thinking | Max response | Prompts | Notes                                                             |
 |-------------------|--------------|-------|----------|--------------|---------|-------------------------------------------------------------------|
 | `quickstart`      | Qwen3-0.6B   | dapo  | on       | 8192         | 32      | Upstream recipe: 3000 rollouts, AIME eval; hours per rollout here |

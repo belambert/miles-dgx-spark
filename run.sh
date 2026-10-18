@@ -44,7 +44,7 @@ shift
 
 # preset settings; values already set in the environment win
 case $preset in
-  quickstart)      : "${THINKING:=on}" "${MAX_LEN:=8192}" "${PROMPTS:=32}" "${ROLLOUTS:=3000}" "${EVAL:=on}" "${SGLANG_MEM:=0.5}" ;;
+  quickstart)      : "${THINKING:=on}" "${MAX_LEN:=8192}" "${PROMPTS:=32}" "${ROLLOUTS:=3000}" "${EVAL:=aime}" "${SGLANG_MEM:=0.5}" ;;
   full)            : "${THINKING:=on}" "${MAX_LEN:=8192}" "${PROMPTS:=32}" "${SGLANG_MEM:=0.5}" ;;
   qwen3-small)     ;;
   qwen3-thinking)  : "${THINKING:=on}" "${MAX_LEN:=8192}" ;;
@@ -63,7 +63,8 @@ esac
 : "${MAX_LEN:=2048}"               # response cap in tokens
 : "${PROMPTS:=8}"                  # prompts per rollout, 8 samples each
 : "${ROLLOUTS:=20}"
-: "${EVAL:=off}"                   # AIME eval before training and every 20 rollouts
+: "${EVAL:=off}"                   # off, aime (the recipe's, every 20 rollouts) or gsm8k
+: "${EVAL_EVERY:=10}"              # gsm8k eval interval, in rollouts; it also runs before training
 : "${SGLANG_MEM:=0.7}"             # SGLang's share of the 128 GB, for weights and KV cache
 : "${LOW_MEM:=0}"                  # 1: bf16 Adam moments, for models of 2B and up
 : "${MAX_TOKENS_PER_GPU:=9216}"    # training micro-batch budget
@@ -81,6 +82,13 @@ extra="--tensor-model-parallel-size 1 --rollout-max-response-len $MAX_LEN \
 # Qwen3.5's prefix cache keeps ~3 linear-attention state slots per request, capping concurrency; hits are ~4%
 [[ $MODEL == Qwen3.5-* ]] && extra+=" --sglang-disable-radix-cache"
 [ "$LOW_MEM" = 1 ] && extra+=" --use-precision-aware-optimizer --exp-avg-dtype bf16 --exp-avg-sq-dtype bf16"
+if [ "$EVAL" = gsm8k ]; then
+  # a fixed 256-problem slice of the test set: all 1319 take ~13 min per eval on the 0.8B
+  eval_data=$HERE/datasets/gsm8k/test256.parquet
+  [ -f "$eval_data" ] || "$PREFIX/bin/python" -c "import pandas as pd; pd.read_parquet('$HERE/datasets/gsm8k/test.parquet').head(256).to_parquet('$eval_data')"
+  extra+=" --eval-interval $EVAL_EVERY --eval-prompt-data gsm8k $eval_data --eval-input-key messages --eval-label-key label \
+--n-samples-per-eval-prompt 1 --eval-max-response-len $MAX_LEN"
+fi
 
 echo "$preset: $MODEL on $DATASET, thinking $THINKING, ${MAX_LEN} tokens, $PROMPTS prompts x 8, $ROLLOUTS rollouts," \
   "eval $EVAL, reward $REWARD, SGLang $SGLANG_MEM -> $OUTPUT_DIR"
@@ -89,5 +97,5 @@ cd "$SRC/miles"
 exec "$PREFIX/bin/python" scripts/run_qwen3_dense.py --model-name "$MODEL" --num-gpus-per-node 1 \
   --model-dir "$HERE/models" --data-dir "$HERE/datasets" --output-dir "$OUTPUT_DIR" \
   --megatron-path "$SRC/Megatron-LM" --num-rollout "$ROLLOUTS" \
-  "$([ "$EVAL" = on ] && echo --enable-eval || echo --no-enable-eval)" --dump-details \
+  "$([ "$EVAL" = aime ] && echo --enable-eval || echo --no-enable-eval)" --dump-details \
   --extra-args "$extra" "$@"
