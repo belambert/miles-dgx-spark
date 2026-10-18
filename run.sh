@@ -19,21 +19,22 @@ set -euo pipefail
 HERE=$(dirname "$(readlink -f "$0")")
 PREFIX=${PREFIX:-$HERE/.venv}
 SRC=${SRC:-$HERE/miles-src}
+DATA_ROOT=${DATA_ROOT:-$HERE}  # holds models/, datasets/ and runs/; put it on a volume that outlives the machine
 
 usage() { sed -n '3,/^set -euo/p' "$0" | sed '$d; s/^# \{0,1\}//'; exit 1; }
 
 prepare() {
   local model=$1
   source "$PREFIX/bin/activate"
-  hf download "Qwen/$model" --local-dir "$HERE/models/$model"
+  hf download "Qwen/$model" --local-dir "$DATA_ROOT/models/$model"
   for ds in dapo-math-17k aime-2024 gsm8k; do
-    hf download --repo-type dataset "zhuzilin/$ds" --local-dir "$HERE/datasets/$ds"
+    hf download --repo-type dataset "zhuzilin/$ds" --local-dir "$DATA_ROOT/datasets/$ds"
   done
   # needs the GPU free: stop any running job first
   cd "$SRC/miles"
   PYTHONPATH="$SRC/Megatron-LM" python tools/convert_hf_to_torch_dist.py \
     $(python miles/utils/external_utils/model_args_utils.py "${model/Qwen/qwen}") \
-    --hf-checkpoint "$HERE/models/$model" --save "$HERE/models/${model}_torch_dist"
+    --hf-checkpoint "$DATA_ROOT/models/$model" --save "$DATA_ROOT/models/${model}_torch_dist"
 }
 
 preset=${1:-}
@@ -68,7 +69,7 @@ esac
 : "${LOGPROB_CHUNK:=4096}"         # unchunked, one 16k sequence over a 248k vocab is 15 GiB of fp32 logits
 # deepscaler grades only text after </think>, which with thinking off is in the prompt
 : "${REWARD:=$([ "$THINKING" = on ] && echo deepscaler || echo math)}"
-OUTPUT_DIR=${OUTPUT_DIR:-$HERE/runs/$preset}
+OUTPUT_DIR=${OUTPUT_DIR:-$DATA_ROOT/runs/$preset}
 
 extra="--tensor-model-parallel-size 1 --rollout-max-response-len $MAX_LEN \
 --rollout-batch-size $PROMPTS --global-batch-size $((PROMPTS * 8)) \
@@ -76,14 +77,14 @@ extra="--tensor-model-parallel-size 1 --rollout-max-response-len $MAX_LEN \
 --log-probs-chunk-size $LOGPROB_CHUNK --rm-type $REWARD --save-interval $SAVE_EVERY"
 # explicit both ways: Qwen3's template thinks unless told not to, Qwen3.5's only when told to
 extra+=" --apply-chat-template-kwargs '{\"enable_thinking\": $([ "$THINKING" = on ] && echo true || echo false)}'"
-[ "$DATASET" = gsm8k ] && extra+=" --prompt-data $HERE/datasets/gsm8k/train.parquet --input-key messages --label-key label"
+[ "$DATASET" = gsm8k ] && extra+=" --prompt-data $DATA_ROOT/datasets/gsm8k/train.parquet --input-key messages --label-key label"
 # Qwen3.5's prefix cache keeps ~3 linear-attention state slots per request, capping concurrency; hits are ~4%
 [[ $MODEL == Qwen3.5-* ]] && extra+=" --sglang-disable-radix-cache"
 [ "$LOW_MEM" = 1 ] && extra+=" --use-precision-aware-optimizer --exp-avg-dtype bf16 --exp-avg-sq-dtype bf16"
 if [ "$EVAL" = gsm8k ]; then
   # a fixed 256-problem slice of the test set: all 1319 take ~13 min per eval on the 0.8B
-  eval_data=$HERE/datasets/gsm8k/test256.parquet
-  [ -f "$eval_data" ] || "$PREFIX/bin/python" -c "import pandas as pd; pd.read_parquet('$HERE/datasets/gsm8k/test.parquet').head(256).to_parquet('$eval_data')"
+  eval_data=$DATA_ROOT/datasets/gsm8k/test256.parquet
+  [ -f "$eval_data" ] || "$PREFIX/bin/python" -c "import pandas as pd; pd.read_parquet('$DATA_ROOT/datasets/gsm8k/test.parquet').head(256).to_parquet('$eval_data')"
   extra+=" --eval-interval $EVAL_EVERY --eval-prompt-data gsm8k $eval_data --eval-input-key messages --eval-label-key label \
 --n-samples-per-eval-prompt 1 --eval-max-response-len $MAX_LEN"
 fi
@@ -95,7 +96,7 @@ echo "$preset: $MODEL on $DATASET, thinking $THINKING, ${MAX_LEN} tokens, $PROMP
 export PATH=$PREFIX/bin:$PATH
 cd "$SRC/miles"
 exec "$PREFIX/bin/python" scripts/run_qwen3_dense.py --model-name "$MODEL" --num-gpus-per-node 1 \
-  --model-dir "$HERE/models" --data-dir "$HERE/datasets" --output-dir "$OUTPUT_DIR" \
+  --model-dir "$DATA_ROOT/models" --data-dir "$DATA_ROOT/datasets" --output-dir "$OUTPUT_DIR" \
   --megatron-path "$SRC/Megatron-LM" --num-rollout "$ROLLOUTS" \
   "$([ "$EVAL" = aime ] && echo --enable-eval || echo --no-enable-eval)" --dump-details \
   --extra-args "$extra" "$@"

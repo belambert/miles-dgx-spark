@@ -42,7 +42,7 @@ for var in UV_CACHE_DIR PIP_CACHE_DIR; do
     export "$var=$local_dir"
   fi
 done
-can_chmod "$PREFIX" || { echo "PREFIX=$PREFIX can't set file permissions, so it can't hold a venv; set PREFIX and SRC to local disk, e.g. PREFIX=/root/miles/.venv SRC=/root/miles/miles-src" >&2; exit 1; }
+can_chmod "$PREFIX" || { echo "PREFIX=$PREFIX can't set file permissions, so it can't hold a venv; clone the repo onto local disk and keep data on the volume with DATA_ROOT (see cloud/README.md), or set PREFIX and SRC to local disk" >&2; exit 1; }
 
 # ---------------------------------------------------------------- host checks (a cloud image may ship CUDA 12)
 driver=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader | head -1)
