@@ -42,7 +42,7 @@ Convert the weights to Megatron's `torch_dist` format. Keep the HuggingFace dire
     PYTHONPATH=$HERE/miles-src/Megatron-LM python tools/convert_hf_to_torch_dist.py $MODEL_ARGS \
         --hf-checkpoint $MODELS/Qwen3-0.6B --save $MODELS/Qwen3-0.6B_torch_dist
 
-Launch GRPO training. Keep the recipe's `flash` attention backend. On the GB10 (sm_121), Transformer Engine would pick FlashAttention 4 (an SGLang dependency), which gives wrong outputs there, so `install.sh` patches TE to use FlashAttention 2 instead. Don't use `auto`: it picks cuDNN fused attention, which can't run the backward pass on packed sequences:
+Launch GRPO training. Keep the recipe's `flash` attention backend. Transformer Engine would pick FlashAttention 4 (an SGLang dependency) and pass it a causal window that FA4 4.0.0b30+ reads as empty, giving wrong attention ([TransformerEngine#3528](https://github.com/NVIDIA/TransformerEngine/issues/3528), fix pending in [#3570](https://github.com/NVIDIA/TransformerEngine/pull/3570)). So `install.sh` patches TE to use FlashAttention 2 on the GB10 instead. Don't use `auto`: it picks cuDNN fused attention, which can't run the backward pass on packed sequences:
 
     python scripts/run_qwen3_dense.py --model-name Qwen3-0.6B --num-gpus-per-node 1 \
         --model-dir $MODELS --data-dir $DATA --output-dir $HERE/runs \

@@ -126,17 +126,19 @@ for name in sys.argv[1:]:
     print(f"{name} {d.version}: {n} files")
 EOF
 
-# TE picks FlashAttention 4 (pulled in by sglang) whenever it's installed, but on GB10 (sm_121)
-# FA4 gives wrong outputs for packed (thd) sequences. Skip it on sm_12x so TE uses FA2, which
-# is correct there. Fails loudly if the TE source moves.
+# TE picks FlashAttention 4 (pulled in by sglang) whenever it's installed, and passes it the
+# FA2-style causal window (-1, 0). Since FA4 4.0.0b30 that means an empty local window, so
+# attention comes out wrong (NVIDIA/TransformerEngine#3528, fix pending in #3570). Skip FA4 on
+# sm_12x so TE uses FA2, which is correct and fast there. Fails loudly if the TE source moves.
 python - <<'EOF'
 import sysconfig
 # by path: importing TE before torch can't find libnccl
 path = f"{sysconfig.get_paths()['purelib']}/transformer_engine/pytorch/attention/dot_product_attention/utils.py"
 anchor = '            logger.debug("Disabling FlashAttention 4 for compute capability < sm80")\n        use_flash_attention_4 = False\n'
-patch = "    if device_compute_capability[0] == 12:  # miles-dgx-spark: FA4 is wrong on GB10\n        use_flash_attention_4 = False\n"
+marker = "# miles-dgx-spark: skip FA4"
+patch = f"    if device_compute_capability[0] == 12:  {marker}\n        use_flash_attention_4 = False\n"
 src = open(path).read()
-if patch not in src:
+if marker not in src:
     assert src.count(anchor) == 1, f"FA4 patch anchor not found in {path}"
     open(path, "w").write(src.replace(anchor, anchor + patch))
 print("TE: FA4 disabled on sm_12x")
