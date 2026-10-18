@@ -38,11 +38,12 @@ Set `PREFIX` or `SRC` to use other locations. The pins at the top of `install.sh
 
 This is the upstream [quick start](https://github.com/radixark/miles/blob/main/docs/getting-started/quick-start.md) on one Spark, with Qwen3-0.6B instead of Qwen3-4B and everything kept under this repo instead of `/root`. Run the steps from the repo root.
 
-| Role     | Hugging Face repo                                                                      | Contents                                         |
-|----------|----------------------------------------------------------------------------------------|--------------------------------------------------|
-| Model    | [Qwen/Qwen3-0.6B](https://huggingface.co/Qwen/Qwen3-0.6B)                              | The policy being trained                         |
-| Training | [zhuzilin/dapo-math-17k](https://huggingface.co/datasets/zhuzilin/dapo-math-17k)       | 17k math problems with checkable answers         |
-| Eval     | [zhuzilin/aime-2024](https://huggingface.co/datasets/zhuzilin/aime-2024)               | AIME 2024 problems, evaluated on but not trained |
+| Role            | Hugging Face repo                                                                | Contents                                          |
+|-----------------|----------------------------------------------------------------------------------|---------------------------------------------------|
+| Model           | [Qwen/Qwen3-0.6B](https://huggingface.co/Qwen/Qwen3-0.6B)                        | The policy being trained                          |
+| Training        | [zhuzilin/dapo-math-17k](https://huggingface.co/datasets/zhuzilin/dapo-math-17k) | 17k math problems with checkable answers          |
+| Eval            | [zhuzilin/aime-2024](https://huggingface.co/datasets/zhuzilin/aime-2024)         | AIME 2024 problems, evaluated on but not trained  |
+| Training (easy) | [zhuzilin/gsm8k](https://huggingface.co/datasets/zhuzilin/gsm8k)                 | 7.5k grade-school word problems, for small models |
 
 Activate the venv and name the directories:
 
@@ -54,6 +55,7 @@ Download the model, the training prompts and the eval benchmark:
     hf download Qwen/Qwen3-0.6B --local-dir $MODELS/Qwen3-0.6B
     hf download --repo-type dataset zhuzilin/dapo-math-17k --local-dir $DATA/dapo-math-17k
     hf download --repo-type dataset zhuzilin/aime-2024 --local-dir $DATA/aime-2024
+    hf download --repo-type dataset zhuzilin/gsm8k --local-dir $DATA/gsm8k
 
 Convert the weights to Megatron's `torch_dist` format. Keep the HuggingFace directory, because the rollout engine reads it:
 
@@ -78,7 +80,7 @@ The full recipe runs 3000 rollouts and starts with an AIME eval that takes hours
 
     ./smoke-small.sh
 
-Each launch keeps its checkpoints in its own directory (`runs/quickstart`, `runs/smoke`, `runs/smoke-small`, `runs/smoke-thinking`, `runs/smoke-thinking-qwen35`, `runs/smoke-thinking-qwen35-16k`, `runs/smoke-thinking-qwen35-2b`, `runs/smoke-small-qwen35-4b`, `runs/smoke-small-qwen35`), because a run resumes from whatever checkpoint its directory holds. A finished smoke run therefore won't train again; delete its directory to start over, for example `rm -rf runs/smoke-small`. Each checkpoint of the 0.6B model is about 8 GB.
+Each launch keeps its checkpoints in its own directory (`runs/quickstart`, `runs/smoke`, `runs/smoke-small`, `runs/smoke-thinking`, `runs/smoke-thinking-qwen35`, `runs/smoke-thinking-qwen35-16k`, `runs/smoke-thinking-qwen35-2b`, `runs/smoke-small-qwen35-4b`, `runs/smoke-small-qwen35`, `runs/smoke-small-qwen35-gsm8k`), because a run resumes from whatever checkpoint its directory holds. A finished smoke run therefore won't train again; delete its directory to start over, for example `rm -rf runs/smoke-small`. Each checkpoint of the 0.6B model is about 8 GB.
 
 Every smoke script saves each rollout's prompts, responses and rewards under its output directory, in `dump_details/trajectory/<rollout>.jsonl`, so you can read what the model actually wrote. Don't send requests to the running SGLang engine to check outputs: it releases its GPU memory during each training step, and a request arriving then crashes the run.
 
@@ -124,6 +126,10 @@ At 8k, Qwen3.5-0.8B's answers nearly all ran out of room while still thinking (s
 
     ./smoke-small-qwen35.sh
     ./smoke-small-qwen35.sh --model-name Qwen3.5-2B --output-dir $HERE/runs/smoke-small-qwen35-2b
+
+Even at 4k, Qwen3.5-0.8B never finishes a dapo-math problem. Offline samples ran to the cap every time, reasoning coherently but never converging, so every reward is 0. `smoke-small-qwen35-gsm8k.sh` trains it on GSM8K instead, which small models can solve in a few hundred tokens, with a 2k cap:
+
+    ./smoke-small-qwen35-gsm8k.sh
 
 Thinking is off because Qwen3's thinking runs past 2k tokens: with it on, nearly every response was truncated before reaching an answer, every reward was 0, and GRPO had nothing to learn from. Without thinking, responses average 600–800 tokens and none are truncated.
 
