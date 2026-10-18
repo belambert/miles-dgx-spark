@@ -52,6 +52,10 @@ This walks through GRPO on Qwen3.5-2B, the largest model that trains on one Spar
 
 The `zhuzilin` copies are what Miles' recipes download: GSM8K with a chat-format `messages` column and a system prompt asking for `\boxed{}`; DAPO-Math-17k deduplicated from 1.79M rows (each problem repeated about 100 times) to 17,398, with prompts asking for `Answer: \boxed{...}` instead of `Answer: ...`; and AIME-2024 with each of the 30 problems once instead of 32 times.
 
+[MATH](https://arxiv.org/abs/2103.03874), harder than GSM8K and easier than dapo, isn't on the `zhuzilin` account, and the original `hendrycks/competition_math` was taken down from Hugging Face. `prepare-math.py` builds it in the same format into `datasets/math/` from mirrors pinned to a commit: 7,471 training problems labeled with their solution's `\boxed{}` answer (29 without one clear answer are dropped), and MATH-500 for evals. `--push <repo>` also uploads it to a private dataset repo. `run.sh` doesn't train on it yet.
+
+    .venv/bin/python prepare-math.py
+
 Download the model and the datasets, and convert the model to Megatron's `torch_dist` format. The rollout engine reads the Hugging Face copy, so both are kept (8 GB for the 2B). The conversion needs the GPU, so stop any running job first:
 
     ./prepare.sh Qwen3.5-2B
