@@ -4,7 +4,7 @@
 # the model-specific extras that Qwen3 dense doesn't need. Needs the image pulled
 # locally: TE, apex and flash-attn are copied out of it (nothing runs in a container).
 #
-# The commit and version pins are in pins.sh, shared with install-cloud.sh.
+# The commit and version pins are in pins.sh, shared with cloud/install.sh.
 set -euo pipefail
 
 HERE=$(dirname "$(readlink -f "$0")")

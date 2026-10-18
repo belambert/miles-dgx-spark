@@ -37,11 +37,7 @@ Set `PREFIX` or `SRC` to use other locations. The pins in `pins.sh` say which im
 
 ### Cloud Install
 
-`install-cloud.sh` installs the same pins on a cloud GPU machine, such as one H100, without Docker; it has not been tested on one yet. It takes TransformerEngine, apex and flash-attn from the [miles-wheels](https://github.com/radixark/miles-wheels) release that the image installs, whose aarch64 builds are byte-identical to the image's. On Hopper it adds FlashAttention 3, which TransformerEngine prefers there, and it stops TransformerEngine from picking FlashAttention 4 on any GPU (see Attention). The host needs an NVIDIA driver of 580 or later and a CUDA 13 toolkit in `/usr/local/cuda`, which many cloud images lack (they ship CUDA 12), plus `git`, `curl` and a C++ compiler; the script installs `uv` and Rust if they're missing.
-
-    ./install-cloud.sh 2>&1 | tee install.log
-
-`run.sh` and `verify.sh` work unchanged, and `run.sh` still trains on one GPU.
+`cloud/install.sh` installs the same pins on a cloud GPU machine without Docker; see [cloud/README.md](cloud/README.md).
 
 ## Quick Start
 

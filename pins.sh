@@ -1,4 +1,4 @@
-# Pins shared by install.sh (DGX Spark) and install-cloud.sh, sourced by both.
+# Pins shared by install.sh (DGX Spark) and cloud/install.sh, sourced by both.
 # They match radixark/miles:latest as run on this Spark, 2026-10-17. Before changing them, compare
 # with `git show <tag>:docker/Dockerfile` and the release notes for the tag you target.
 

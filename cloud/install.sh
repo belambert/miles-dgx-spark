@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # Non-Docker Miles install for a cloud GPU machine (x86_64 or aarch64 Linux, e.g. one H100), with
-# CUDA 13 and Python 3.12; install.sh is the DGX Spark version. Mirrors radixark/miles
+# CUDA 13 and Python 3.12; ../install.sh is the DGX Spark version. Mirrors radixark/miles
 # docker/Dockerfile step by step, minus the base image and the model-specific extras that Qwen3
 # dense doesn't need. TE, apex and flash-attn come from the miles-wheels release the image installs.
 #
 # Needs an NVIDIA driver >= 580 and a CUDA 13 toolkit (nvcc) in /usr/local/cuda or on PATH:
 # torch_memory_saver builds against it, and SGLang compiles some kernels at runtime.
 #
-# The commit and version pins are in pins.sh, shared with install.sh.
+# The commit and version pins are in ../pins.sh, shared with the Spark install.sh.
 set -euo pipefail
 
-HERE=$(dirname "$(readlink -f "$0")")
+HERE=$(dirname "$(dirname "$(readlink -f "$0")")")  # the repo root, one up from cloud/
 source "$HERE/pins.sh"
 # the release MILES_IMAGE's Dockerfile installs (WHEELS_TAG_X86 / WHEELS_TAG_ARM64); its TE,
 # apex and flash-attn are byte-identical to the image's
@@ -18,11 +18,31 @@ WHEELS_REPO=radixark/miles-wheels
 WHEELS_TAG=${WHEELS_TAG:-cu130-torch214-$(uname -m)}
 
 # ---------------------------------------------------------------- locations
-# everything lives next to this script; paths are absolute because the venv and
-# the editable installs record them, so moving this folder means reinstalling
+# everything lives in the repo root, where run.sh looks; paths are absolute because the venv
+# and the editable installs record them, so moving the repo means reinstalling
 PREFIX=${PREFIX:-$HERE/.venv}
 SRC=${SRC:-$HERE/miles-src}
 WHEELS=$SRC/wheels/$WHEELS_TAG
+
+# ---------------------------------------------------------------- filesystems that can't chmod
+# Some cloud containers mount /workspace as a FUSE volume over object storage (geesefs) that
+# can't set permissions, and point UV_CACHE_DIR/PIP_CACHE_DIR at it; uv then fails extracting
+# pip into the venv. Move such caches to local disk; the venv itself can't live there either.
+can_chmod() {
+  local f
+  mkdir -p "$1" 2>/dev/null && f=$(mktemp -p "$1" 2>/dev/null) || return 1
+  chmod +x "$f" 2>/dev/null; local rc=$?
+  rm -f "$f"
+  return $rc
+}
+for var in UV_CACHE_DIR PIP_CACHE_DIR; do
+  if [ -n "${!var:-}" ] && ! can_chmod "${!var}"; then
+    tool=${var%%_*}; local_dir=$HOME/.cache/${tool,,}
+    echo "$var=${!var} can't set file permissions; using $local_dir" >&2
+    export "$var=$local_dir"
+  fi
+done
+can_chmod "$PREFIX" || { echo "PREFIX=$PREFIX can't set file permissions, so it can't hold a venv; set PREFIX and SRC to local disk, e.g. PREFIX=/root/miles/.venv SRC=/root/miles/miles-src" >&2; exit 1; }
 
 # ---------------------------------------------------------------- host checks (a cloud image may ship CUDA 12)
 driver=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader | head -1)
@@ -151,7 +171,7 @@ chmod +x "$PREFIX/bin/sgl-model-gateway"
 pip install --force-reinstall --no-deps "apache-tvm-ffi==${TVM_FFI_VERSION}"
 
 # ---------------------------------------------------------------- 9. verify
-PREFIX=$PREFIX "$HERE/verify.sh"
+PREFIX=$PREFIX bash "$HERE/verify.sh"  # bash: the checkout may have lost its exec bits
 
 echo
 echo "Done. Activate with: source $PREFIX/bin/activate"
