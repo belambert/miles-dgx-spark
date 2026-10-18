@@ -54,9 +54,13 @@ The full recipe runs 3000 rollouts and starts with an AIME eval that takes hours
 
     ./smoke.sh
 
-`smoke.sh` keeps the recipe's batch: 256 samples of up to 8k tokens, which overflow SGLang's KV cache and take 40+ minutes per rollout. `smoke-small.sh` runs 64 samples of up to 2k tokens with more memory for the cache and Qwen3's thinking turned off, for about two minutes per rollout:
+`smoke.sh` keeps the recipe's batch: 256 samples of up to 8k tokens, which overflow SGLang's KV cache and take 40+ minutes per rollout. `smoke-small.sh` runs 64 samples of up to 2k tokens with more memory for the cache and Qwen3's thinking turned off, for about 40 seconds per iteration:
 
     ./smoke-small.sh
+
+Thinking is off because Qwen3's thinking runs past 2k tokens: with it on, nearly every response was truncated before reaching an answer, every reward was 0, and GRPO had nothing to learn from. Without thinking, responses average 600–800 tokens and none are truncated.
+
+Turning thinking off also means switching the reward from the recipe's `deepscaler` to `math`. `deepscaler` only grades the text after `</think>` and scores 0 when there isn't one. With thinking off, Qwen3's chat template puts an empty `<think></think>` block in the prompt, so responses never contain `</think>` and every answer scored 0, right or wrong. `math` grades the last `\boxed{}` answer anywhere in the response, which is the format the dataset's prompts ask for.
 
 The launcher starts a local Ray cluster. Before that it kills any running `sglang`, `ray` and `redis` processes, including ones serving from other envs.
 
