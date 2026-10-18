@@ -78,7 +78,7 @@ The full recipe runs 3000 rollouts and starts with an AIME eval that takes hours
 
     ./smoke-small.sh
 
-Each launch keeps its checkpoints in its own directory (`runs/quickstart`, `runs/smoke`, `runs/smoke-small`, `runs/smoke-thinking`, `runs/smoke-thinking-qwen35`), because a run resumes from whatever checkpoint its directory holds. A finished smoke run therefore won't train again; delete its directory to start over, for example `rm -rf runs/smoke-small`. Each checkpoint of the 0.6B model is about 8 GB.
+Each launch keeps its checkpoints in its own directory (`runs/quickstart`, `runs/smoke`, `runs/smoke-small`, `runs/smoke-thinking`, `runs/smoke-thinking-qwen35`, `runs/smoke-thinking-qwen35-16k`), because a run resumes from whatever checkpoint its directory holds. A finished smoke run therefore won't train again; delete its directory to start over, for example `rm -rf runs/smoke-small`. Each checkpoint of the 0.6B model is about 8 GB.
 
 `smoke-thinking.sh` sits in between: `smoke-small.sh`'s batch and cache size, but thinking on, 8k-token responses and the recipe's `deepscaler` reward. It checks the thinking path, including training on long sequences, at an estimated 5–10 minutes per rollout:
 
@@ -93,6 +93,10 @@ Each launch keeps its checkpoints in its own directory (`runs/quickstart`, `runs
         --hf-checkpoint $MODELS/Qwen3.5-0.8B --save $MODELS/Qwen3.5-0.8B_torch_dist
     cd $HERE
     ./smoke-thinking-qwen35.sh
+
+At 8k, Qwen3.5-0.8B's answers nearly all ran out of room while still thinking (see Measurements). `smoke-thinking-qwen35-16k.sh` doubles the cap:
+
+    ./smoke-thinking-qwen35-16k.sh
 
 Thinking is off because Qwen3's thinking runs past 2k tokens: with it on, nearly every response was truncated before reaching an answer, every reward was 0, and GRPO had nothing to learn from. Without thinking, responses average 600–800 tokens and none are truncated.
 
