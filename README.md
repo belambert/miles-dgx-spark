@@ -106,15 +106,18 @@ The Ray dashboard listens only on the Spark's localhost, port 8265. To view it f
 
 ## Measurements
 
-Runs of Qwen3-0.6B on one Spark (2026-10-17), with the TE patch unless noted. "KL" is `train/train_rollout_kl`, the gap between SGLang's and Megatron's log-probs for the same tokens; near zero means training sees the same model SGLang sampled from. Reward is the fraction of answers graded correct per rollout.
+Runs on one Spark (2026-10-17), with the TE patch unless noted. "KL" is `train/train_rollout_kl`, the gap between SGLang's and Megatron's log-probs for the same tokens; near zero means training sees the same model SGLang sampled from. Reward is the fraction of answers graded correct per rollout.
 
-| Launch              | Samples | Max response | Thinking | Rollout                      | Train step | Mean response | Truncated | Reward         | KL     |
-|---------------------|---------|--------------|----------|------------------------------|------------|---------------|-----------|----------------|--------|
-| `smoke.sh`          | 256     | 8192         | on       | not finished, est. 40–50 min | –          | –             | –         | –              | –      |
-| `smoke-thinking.sh` | 64      | 8192         | on       | 17 min                       | 99 s       | 7410          | 66%       | 0.094          | 0.0007 |
-| `smoke-small.sh`    | 64      | 2048         | off      | 21–38 s                      | 10–14 s    | 640–1005      | 0–5%      | 0.067 (0–0.17) | 0.0005 |
+| Launch                     | Model        | Samples | Max response | Thinking | Rollout                      | Train step | Mean response | Truncated | Reward         | KL     |
+|----------------------------|--------------|---------|--------------|----------|------------------------------|------------|---------------|-----------|----------------|--------|
+| `smoke.sh`                 | Qwen3-0.6B   | 256     | 8192         | on       | not finished, est. 40–50 min | –          | –             | –         | –              | –      |
+| `smoke-thinking.sh`        | Qwen3-0.6B   | 64      | 8192         | on       | 17 min                       | 99 s       | 7410          | 66%       | 0.094          | 0.0007 |
+| `smoke-thinking-qwen35.sh` | Qwen3.5-0.8B | 64      | 8192         | on       | 5.3 min                      | 151 s      | 7756–7953     | 94%       | 0.0            | 0.0005 |
+| `smoke-small.sh`           | Qwen3-0.6B   | 64      | 2048         | off      | 21–38 s                      | 10–14 s    | 640–1005      | 0–5%      | 0.067 (0–0.17) | 0.0005 |
 
 `smoke.sh` overflows SGLang's KV cache: throughput fell from about 1,700 to 580 tokens/s as requests were evicted and requeued, and the first rollout never finished. `smoke-thinking.sh` keeps its 64 answers in the cache (0.7 memory fraction holds about 600k tokens), but throughput still falls from about 1,400 to 300 tokens/s as answers grow, because every decode step reads the whole cache. `smoke-small.sh` runs 20 rollouts in about 20 minutes; its reward stays flat, as expected for so few steps.
+
+Qwen3.5-0.8B generates the same 64 thinking answers 3.3× faster than Qwen3-0.6B (5.3 vs 17 minutes): with linear attention in 18 of 24 layers, its throughput only falls from about 2,200 to 1,150 tokens/s over a rollout. Its training step is slower (151 s, after a one-time 190 s while Triton kernels compile, against 99 s), but a full iteration still takes 10.5 minutes against about 19. It thinks longer, though: 94% of answers hit 8k before finishing, so every reward was 0 and there was nothing to learn. Training it with thinking on needs a longer cap.
 
 Training-step time by attention backend, on the 64-sample, 2k-token batch with thinking on:
 
