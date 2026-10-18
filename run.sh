@@ -5,16 +5,13 @@
 #   ./run.sh prepare <model>                 download a model and the datasets, convert to torch_dist
 #   MAX_LEN=8192 ./run.sh qwen35-2b          any setting below can be overridden from the environment
 #
-# Presets (see README, Measurements, for how each has done):
-#   quickstart       upstream quick start on Qwen3-0.6B: thinking, 8k, 32 prompts, 3000 rollouts, AIME eval
-#   full             quickstart's batch for 20 rollouts, no eval; overflows the KV cache, 40+ min per rollout
-#   qwen3-small      Qwen3-0.6B, no thinking, 2k                  the fast end-to-end check
-#   qwen3-thinking   Qwen3-0.6B, thinking, 8k
-#   qwen35-thinking  Qwen3.5-0.8B, thinking, 8k                   most answers still thinking at 8k
-#   qwen35-dapo      Qwen3.5-0.8B, no thinking, 4k                never finishes a dapo problem
-#   qwen35-gsm8k     Qwen3.5-0.8B, no thinking, 2k, GSM8K
-#   qwen35-2b        Qwen3.5-2B, no thinking, 4k, low-memory optimizer
-#   qwen35-4b        Qwen3.5-4B, no thinking, 4k, low-memory optimizer; runs out of memory in its first step
+# Every preset trains on GSM8K without thinking and scores a fixed GSM8K test slice every 10 rollouts
+# (see README, Measurements, for how each has done). DATASET=dapo THINKING=on EVAL=aime gives back the
+# upstream recipe's data, thinking and eval.
+#   qwen3       Qwen3-0.6B, 2k                                 the fast end-to-end check
+#   qwen35      Qwen3.5-0.8B, 4k
+#   qwen35-2b   Qwen3.5-2B, 4k, low-memory optimizer
+#   qwen35-4b   Qwen3.5-4B, 4k, low-memory optimizer; runs out of memory in its first step
 set -euo pipefail
 
 HERE=$(dirname "$(readlink -f "$0")")
@@ -44,26 +41,21 @@ shift
 
 # preset settings; values already set in the environment win
 case $preset in
-  quickstart)      : "${THINKING:=on}" "${MAX_LEN:=8192}" "${PROMPTS:=32}" "${ROLLOUTS:=3000}" "${EVAL:=aime}" "${SGLANG_MEM:=0.5}" ;;
-  full)            : "${THINKING:=on}" "${MAX_LEN:=8192}" "${PROMPTS:=32}" "${SGLANG_MEM:=0.5}" ;;
-  qwen3-small)     ;;
-  qwen3-thinking)  : "${THINKING:=on}" "${MAX_LEN:=8192}" ;;
-  qwen35-thinking) : "${MODEL:=Qwen3.5-0.8B}" "${THINKING:=on}" "${MAX_LEN:=8192}" ;;
-  qwen35-dapo)     : "${MODEL:=Qwen3.5-0.8B}" "${MAX_LEN:=4096}" ;;
-  qwen35-gsm8k)    : "${MODEL:=Qwen3.5-0.8B}" "${DATASET:=gsm8k}" ;;
-  qwen35-2b)       : "${MODEL:=Qwen3.5-2B}" "${MAX_LEN:=4096}" "${SGLANG_MEM:=0.5}" "${LOW_MEM:=1}" ;;
-  qwen35-4b)       : "${MODEL:=Qwen3.5-4B}" "${MAX_LEN:=4096}" "${SGLANG_MEM:=0.3}" "${LOW_MEM:=1}" "${MAX_TOKENS_PER_GPU:=4096}" "${LOGPROB_CHUNK:=2048}" ;;
-  *)               usage ;;
+  qwen3)     ;;
+  qwen35)    : "${MODEL:=Qwen3.5-0.8B}" "${MAX_LEN:=4096}" ;;
+  qwen35-2b) : "${MODEL:=Qwen3.5-2B}" "${MAX_LEN:=4096}" "${SGLANG_MEM:=0.5}" "${LOW_MEM:=1}" ;;
+  qwen35-4b) : "${MODEL:=Qwen3.5-4B}" "${MAX_LEN:=4096}" "${SGLANG_MEM:=0.3}" "${LOW_MEM:=1}" "${MAX_TOKENS_PER_GPU:=4096}" "${LOGPROB_CHUNK:=2048}" ;;
+  *)         usage ;;
 esac
 
 # defaults
 : "${MODEL:=Qwen3-0.6B}"           # a --model-name of run_qwen3_dense.py
-: "${DATASET:=dapo}"               # dapo or gsm8k
-: "${THINKING:=off}"               # Qwen's chat-template thinking
+: "${DATASET:=gsm8k}"              # gsm8k or dapo (the recipe's; too hard for models under 4B)
+: "${THINKING:=off}"               # Qwen's chat-template thinking; on needs 8k+ and is ~10x slower
 : "${MAX_LEN:=2048}"               # response cap in tokens
 : "${PROMPTS:=8}"                  # prompts per rollout, 8 samples each
 : "${ROLLOUTS:=20}"
-: "${EVAL:=off}"                   # off, aime (the recipe's, every 20 rollouts) or gsm8k
+: "${EVAL:=gsm8k}"                 # gsm8k, aime (the recipe's, every 20 rollouts; hours here) or off
 : "${EVAL_EVERY:=10}"              # gsm8k eval interval, in rollouts; it also runs before training
 : "${SGLANG_MEM:=0.7}"             # SGLang's share of the 128 GB, for weights and KV cache
 : "${LOW_MEM:=0}"                  # 1: bf16 Adam moments, for models of 2B and up

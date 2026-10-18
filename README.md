@@ -4,24 +4,24 @@ Non-Docker install of [Miles](https://github.com/radixark/miles) for a DGX Spark
 
 ## Compromises
 
-This runs the upstream [quick start](https://github.com/radixark/miles/blob/main/docs/getting-started/quick-start.md) on one Spark, which takes some changes. "Where" says which `run.sh` presets carry each change (see Quick Start).
+This started as the upstream [quick start](https://github.com/radixark/miles/blob/main/docs/getting-started/quick-start.md) on one Spark. Running it here takes these changes, which are now the defaults of every `run.sh` preset (see Quick Start).
 
-| Setting             | Upstream quick start               | Here                                                  | Where                        | Why                                                 |
-|---------------------|------------------------------------|-------------------------------------------------------|------------------------------|-----------------------------------------------------|
-| Install             | Docker image                       | host venv; TE, apex, flash-attn copied from the image | all                          | Non-Docker install                                  |
-| Model               | Qwen3-4B                           | Qwen3-0.6B, Qwen3.5-0.8B/2B/4B                        | all                          | Fits one GPU with TP 1                              |
-| GPUs                | 8 (TP 2, 4 SGLang engines)         | 1 (TP 1, 1 engine)                                    | all                          | A Spark has one GB10                                |
-| Attention           | FlashAttention via TE              | TE patched to use FA2, not FA4                        | all                          | TE + FA4 gives wrong attention (TE#3528)            |
-| Rollouts            | 3000                               | 20                                                    | all but `quickstart`         | A quick end-to-end check                            |
-| AIME eval           | before training, every 20 rollouts | off                                                   | all but `quickstart`         | The first eval alone takes hours                    |
-| Training data       | dapo-math-17k                      | GSM8K                                                 | `qwen35-gsm8k`               | Qwen3.5-0.8B never finishes a dapo problem          |
-| Prompts per rollout | 32 (256 samples)                   | 8 (64 samples)                                        | all but `quickstart`, `full` | 256 long samples overflow the KV cache              |
-| Global batch        | 256                                | 64                                                    | all but `quickstart`, `full` | Matches the smaller rollout                         |
-| Max response        | 8192 tokens                        | 2048–4096 tokens                                      | no-thinking presets          | Keeps rollouts under a minute                       |
-| Qwen3 thinking      | on                                 | off                                                   | no-thinking presets          | Thinking runs past 2k tokens, so all rewards were 0 |
-| Reward              | `deepscaler`                       | `math`                                                | no-thinking presets          | `deepscaler` needs `</think>` in the response       |
+| Setting             | Upstream quick start                        | Here                                                  | Why                                                 |
+|---------------------|---------------------------------------------|-------------------------------------------------------|-----------------------------------------------------|
+| Install             | Docker image                                | host venv; TE, apex, flash-attn copied from the image | Non-Docker install                                  |
+| Model               | Qwen3-4B                                    | Qwen3-0.6B, Qwen3.5-0.8B/2B/4B                        | Fits one GPU with TP 1                              |
+| GPUs                | 8 (TP 2, 4 SGLang engines)                  | 1 (TP 1, 1 engine)                                    | A Spark has one GB10                                |
+| Attention           | FlashAttention via TE                       | TE patched to use FA2, not FA4                        | TE + FA4 gives wrong attention (TE#3528)            |
+| Rollouts            | 3000                                        | 20                                                    | A quick end-to-end check                            |
+| Eval                | AIME, before training and every 20 rollouts | GSM8K test slice, every 10                            | AIME takes hours per eval; GSM8K tracks learning    |
+| Training data       | dapo-math-17k                               | GSM8K                                                 | Models under 4B rarely finish a dapo problem        |
+| Prompts per rollout | 32 (256 samples)                            | 8 (64 samples)                                        | 256 long samples overflow the KV cache              |
+| Global batch        | 256                                         | 64                                                    | Matches the smaller rollout                         |
+| Max response        | 8192 tokens                                 | 2048–4096 tokens                                      | Answers without thinking fit                        |
+| Qwen3 thinking      | on                                          | off                                                   | Thinking runs past 2k tokens, so all rewards were 0 |
+| Reward              | `deepscaler`                                | `math`                                                | `deepscaler` needs `</think>` in the response       |
 
-So the `quickstart` preset differs from upstream only in model size, GPU count and the attention fix, but on one Spark its rollouts take 40+ minutes and its first eval several hours. The presets that run in minutes train a different setup: short, non-thinking answers graded by a different reward.
+`DATASET=dapo THINKING=on EVAL=aime MAX_LEN=8192 PROMPTS=32 ROLLOUTS=3000 SGLANG_MEM=0.5 ./run.sh qwen3` brings back the upstream recipe, differing only in model size, GPU count and the attention fix, but on one Spark its rollouts take 40+ minutes and its first eval several hours.
 
 ## Usage
 
@@ -54,31 +54,26 @@ Download a model and the datasets, and convert the model to Megatron's `torch_di
 
 Then train with a preset:
 
-    ./run.sh qwen3-small
+    ./run.sh qwen3
 
-`run.sh` launches Miles' `scripts/run_qwen3_dense.py` with the preset's settings. Each preset is one line near the top of the script, and any setting (`MODEL`, `DATASET`, `THINKING`, `MAX_LEN`, `PROMPTS`, `ROLLOUTS`, `EVAL`, `SGLANG_MEM`, `REWARD`, ...) can be overridden from the environment, for example `MAX_LEN=16384 ./run.sh qwen35-thinking`. Arguments after the preset go to the launcher. The first line it prints sums up the run. Every rollout has 8 samples per prompt.
+`run.sh` launches Miles' `scripts/run_qwen3_dense.py` with the preset's settings. Each preset is one line near the top of the script, and any setting (`MODEL`, `DATASET`, `THINKING`, `MAX_LEN`, `PROMPTS`, `ROLLOUTS`, `EVAL`, `SGLANG_MEM`, `REWARD`, ...) can be overridden from the environment, for example `MAX_LEN=8192 ./run.sh qwen35-2b` or `DATASET=dapo ./run.sh qwen35-4b`. Arguments after the preset go to the launcher. The first line it prints sums up the run. Every rollout has 8 samples per prompt.
 
-`EVAL=gsm8k` scores the model on a fixed 256-problem slice of GSM8K's test set, before training and every `EVAL_EVERY` rollouts (default 10), with one sample per problem at the rollout temperature (1.0) and the training response cap. Unlike the rollout reward, which depends on which 8 training problems came up, this measures the same problems each time, so it shows whether training is helping. A longer run to check that:
+By default each run (`EVAL=gsm8k`) scores the model on a fixed 256-problem slice of GSM8K's test set, before training and every `EVAL_EVERY` rollouts (default 10), with one sample per problem at the rollout temperature (1.0) and the training response cap. Unlike the rollout reward, which depends on which 8 training problems came up, this measures the same problems each time, so it shows whether training is helping. A longer run to check that:
 
-    EVAL=gsm8k MAX_LEN=4096 ROLLOUTS=200 ./run.sh qwen35-gsm8k
+    ROLLOUTS=200 ./run.sh qwen35
 
-`EVAL=aime` is the recipe's AIME eval, which `quickstart` uses; it takes hours per eval here.
+`EVAL=aime` is the recipe's AIME eval, which takes hours per eval here, and `EVAL=off` skips evals.
 
-| Preset            | Model        | Data  | Thinking | Max response | Prompts | Notes                                                                    |
-|-------------------|--------------|-------|----------|--------------|---------|--------------------------------------------------------------------------|
-| `quickstart`      | Qwen3-0.6B   | dapo  | on       | 8192         | 32      | Upstream recipe: 3000 rollouts, AIME eval; hours per rollout here        |
-| `full`            | Qwen3-0.6B   | dapo  | on       | 8192         | 32      | 20 rollouts, no eval; overflows the KV cache, 40+ min per rollout        |
-| `qwen3-small`     | Qwen3-0.6B   | dapo  | off      | 2048         | 8       | The fast end-to-end check: ~40 s per iteration, reward ~0.07             |
-| `qwen3-thinking`  | Qwen3-0.6B   | dapo  | on       | 8192         | 8       | 17 min rollouts, reward ~0.09                                            |
-| `qwen35-thinking` | Qwen3.5-0.8B | dapo  | on       | 8192         | 8       | 5 min rollouts, but 94% cut off mid-thought, reward 0                    |
-| `qwen35-dapo`     | Qwen3.5-0.8B | dapo  | off      | 4096         | 8       | Never finishes a dapo problem, reward 0                                  |
-| `qwen35-gsm8k`    | Qwen3.5-0.8B | gsm8k | off      | 2048         | 8       | ~1 min per iteration, reward 0.36–0.63                                   |
-| `qwen35-2b`       | Qwen3.5-2B   | dapo  | off      | 4096         | 8       | Fits in memory; ~4.5 min per iteration, 84–95% cut off, reward 0.02–0.13 |
-| `qwen35-4b`       | Qwen3.5-4B   | dapo  | off      | 4096         | 8       | Reward 0.41, but out of memory in its first optimizer step               |
+| Preset      | Model        | Max response | Notes                                               |
+|-------------|--------------|--------------|-----------------------------------------------------|
+| `qwen3`     | Qwen3-0.6B   | 2048         | The fast end-to-end check                           |
+| `qwen35`    | Qwen3.5-0.8B | 4096         | ~1 min per iteration at 2k, reward 0.28–0.66        |
+| `qwen35-2b` | Qwen3.5-2B   | 4096         | Fits in memory, barely; not yet run on GSM8K        |
+| `qwen35-4b` | Qwen3.5-4B   | 4096         | Out of memory in its first optimizer step (on dapo) |
 
-Each preset writes to `runs/<preset>` and resumes from the checkpoint there, so a finished run won't train again; delete its directory to start over, for example `rm -rf runs/qwen3-small`. A checkpoint with optimizer state is about 8 GB for the 0.6B and 50–60 GB for the 4B. Each run also saves every rollout's samples in `runs/<preset>/dump_details/rollout_data/<rollout>.pt`, so you can read what the model wrote:
+Each preset writes to `runs/<preset>` and resumes from the checkpoint there, so a finished run won't train again; delete its directory to start over, for example `rm -rf runs/qwen3`. A checkpoint with optimizer state is about 8 GB for the 0.6B and 50–60 GB for the 4B. Each run also saves every rollout's samples in `runs/<preset>/dump_details/rollout_data/<rollout>.pt`, so you can read what the model wrote:
 
-    PYTHONPATH=miles-src/miles .venv/bin/python -c "import torch; s = torch.load('runs/qwen3-small/dump_details/rollout_data/0.pt', weights_only=False)['samples'][0]; print(s['reward'], s['status'], s['response'])"
+    PYTHONPATH=miles-src/miles .venv/bin/python -c "import torch; s = torch.load('runs/qwen3/dump_details/rollout_data/0.pt', weights_only=False)['samples'][0]; print(s['reward'], s['status'], s['response'])"
 
 Ray's job logs, by contrast, are wiped whenever a new run restarts Ray. Don't send requests to the running SGLang engine to check outputs instead: it releases its GPU memory during each training step, and a request arriving then crashes the run. Set `WANDB_API_KEY` to log to wandb.
 
@@ -102,22 +97,22 @@ The Ray dashboard listens only on the Spark's localhost, port 8265. To view it f
 
 ## Measurements
 
-Runs on one Spark (2026-10-17), with the TE patch unless noted. "KL" is `train/train_rollout_kl`, the gap between SGLang's and Megatron's log-probs for the same tokens; near zero means training sees the same model SGLang sampled from. Reward is the fraction of answers graded correct per rollout.
+Runs on one Spark (2026-10-17), with the TE patch unless noted, mostly from before GSM8K and no thinking became the defaults. "KL" is `train/train_rollout_kl`, the gap between SGLang's and Megatron's log-probs for the same tokens; near zero means training sees the same model SGLang sampled from. Reward is the fraction of answers graded correct per rollout.
 
-| Preset            | Model        | Samples | Max response | Thinking | Rollout                      | Train step | Mean response | Truncated | Reward         | KL     |
-|-------------------|--------------|---------|--------------|----------|------------------------------|------------|---------------|-----------|----------------|--------|
-| `full`            | Qwen3-0.6B   | 256     | 8192         | on       | not finished, est. 40–50 min | –          | –             | –         | –              | –      |
-| `qwen3-thinking`  | Qwen3-0.6B   | 64      | 8192         | on       | 17 min                       | 99 s       | 7410          | 66%       | 0.094          | 0.0007 |
-| `qwen35-thinking` | Qwen3.5-0.8B | 64      | 8192         | on       | 5.3 min                      | 151 s      | 7756–7953     | 94%       | 0.0            | 0.0005 |
-| `qwen3-small`     | Qwen3-0.6B   | 64      | 2048         | off      | 21–38 s                      | 10–14 s    | 640–1005      | 0–5%      | 0.067 (0–0.17) | 0.0005 |
-| `qwen35-gsm8k`    | Qwen3.5-0.8B | 64      | 2048         | off      | 25–42 s                      | 14–23 s    | 536–1105      | 6–39%     | 0.42 → 0.45    | 0.0004 |
-| `qwen35-2b`       | Qwen3.5-2B   | 64      | 4096         | off      | 172–178 s                    | 95–105 s   | 3671–4001     | 84–95%    | 0.016–0.125    | 0.0004 |
+| Data  | Model        | Samples | Max response | Thinking | Rollout                      | Train step | Mean response | Truncated | Reward         | KL     |
+|-------|--------------|---------|--------------|----------|------------------------------|------------|---------------|-----------|----------------|--------|
+| dapo  | Qwen3-0.6B   | 256     | 8192         | on       | not finished, est. 40–50 min | –          | –             | –         | –              | –      |
+| dapo  | Qwen3-0.6B   | 64      | 8192         | on       | 17 min                       | 99 s       | 7410          | 66%       | 0.094          | 0.0007 |
+| dapo  | Qwen3.5-0.8B | 64      | 8192         | on       | 5.3 min                      | 151 s      | 7756–7953     | 94%       | 0.0            | 0.0005 |
+| dapo  | Qwen3-0.6B   | 64      | 2048         | off      | 21–38 s                      | 10–14 s    | 640–1005      | 0–5%      | 0.067 (0–0.17) | 0.0005 |
+| GSM8K | Qwen3.5-0.8B | 64      | 2048         | off      | 25–42 s                      | 14–23 s    | 536–1105      | 6–39%     | 0.42 → 0.45    | 0.0004 |
+| dapo  | Qwen3.5-2B   | 64      | 4096         | off      | 172–178 s                    | 95–105 s   | 3671–4001     | 84–95%    | 0.016–0.125    | 0.0004 |
 
-`full` overflows SGLang's KV cache: throughput fell from about 1,700 to 580 tokens/s as requests were evicted and requeued, and the first rollout never finished. `qwen3-thinking` keeps its 64 answers in the cache (0.7 memory fraction holds about 600k tokens), but throughput still falls from about 1,400 to 300 tokens/s as answers grow, because every decode step reads the whole cache. `qwen3-small` runs 20 rollouts in about 20 minutes; its reward stays flat, as expected for so few steps.
+The 256-sample thinking batch overflows SGLang's KV cache: throughput fell from about 1,700 to 580 tokens/s as requests were evicted and requeued, and the first rollout never finished. Qwen3-0.6B with thinking and 64 samples keeps its answers in the cache (0.7 memory fraction holds about 600k tokens), but throughput still falls from about 1,400 to 300 tokens/s as answers grow, because every decode step reads the whole cache. Without thinking at 2k it runs 20 rollouts in about 20 minutes; its reward stays flat, as expected for so few steps.
 
 Qwen3.5-0.8B generates the same 64 thinking answers 3.3× faster than Qwen3-0.6B (5.3 vs 17 minutes): with linear attention in 18 of 24 layers, its throughput only falls from about 2,200 to 1,150 tokens/s over a rollout. Its training step is slower (151 s, after a one-time 190 s while Triton kernels compile, against 99 s), but a full iteration still takes 10.5 minutes against about 19. It thinks longer, though: 94% of answers hit 8k before finishing, so every reward was 0 and there was nothing to learn. Training it with thinking on needs a longer cap.
 
-On GSM8K, Qwen3.5-0.8B finally gets a learning signal: 28–66% of answers are correct and `grad_norm` is 1.2–2.4 on every step, against 0 on dapo. Over 20 rollouts the mean reward went from 0.42 (rollouts 0–9) to 0.45 (10–19), within noise for 8 prompts per rollout. Rollouts with fewer answers cut off at 2k score higher, so a 4k cap would likely help. The data column of the table is dapo except for this row.
+On GSM8K, Qwen3.5-0.8B finally gets a learning signal: 28–66% of answers are correct and `grad_norm` is 1.2–2.4 on every step, against 0 on dapo. Over 20 rollouts the mean reward went from 0.42 (rollouts 0–9) to 0.45 (10–19), within noise for 8 prompts per rollout. Rollouts with fewer answers cut off at 2k score higher, so a 4k cap would likely help.
 
 Qwen3.5-2B is the largest Qwen3.5 model that trains on one Spark with these settings (the 4B runs out of memory), though system memory is nearly exhausted during its run. On dapo it writes long answers like the 0.8B: 84–95% hit 4k, for a weak signal (1 and 8 correct of 64 in its first two rollouts).
 
