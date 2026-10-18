@@ -72,7 +72,7 @@ Then train with a preset:
 
 Each preset writes to `runs/<preset>` and resumes from the checkpoint there, so a finished run won't train again; delete its directory to start over, for example `rm -rf runs/qwen3-small`. A checkpoint with optimizer state is about 8 GB for the 0.6B and 50–60 GB for the 4B. Each run also saves every rollout's samples in `runs/<preset>/dump_details/rollout_data/<rollout>.pt`, so you can read what the model wrote:
 
-    PYTHONPATH=miles-src/miles .venv/bin/python -c "import torch; s = torch.load('runs/qwen3-small/dump_details/rollout_data/0.pt', weights_only=False)['samples'][0]; print(s.reward, s.status, s.response)"
+    PYTHONPATH=miles-src/miles .venv/bin/python -c "import torch; s = torch.load('runs/qwen3-small/dump_details/rollout_data/0.pt', weights_only=False)['samples'][0]; print(s['reward'], s['status'], s['response'])"
 
 Ray's job logs, by contrast, are wiped whenever a new run restarts Ray. Don't send requests to the running SGLang engine to check outputs instead: it releases its GPU memory during each training step, and a request arriving then crashes the run. Set `WANDB_API_KEY` to log to wandb.
 
