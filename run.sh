@@ -41,14 +41,14 @@ esac
 
 # defaults
 : "${MODEL:=Qwen3-0.6B}"           # a --model-name of run_qwen3_dense.py
-: "${DATASET:=gsm8k}"              # gsm8k or dapo (the recipe's; too hard for models under 4B)
+: "${DATASET:=gsm8k}"              # gsm8k, math (from prepare-math.py) or dapo (the recipe's; too hard under 4B)
 : "${THINKING:=off}"               # Qwen's chat-template thinking; on needs 8k+ and is ~10x slower
 : "${MAX_LEN:=2048}"               # response cap in tokens
 : "${PROMPTS:=8}"                  # prompts per rollout, 8 samples each
 : "${ROLLOUTS:=20}"
 : "${SAVE_EVERY:=20}"              # rollouts per checkpoint; Miles keeps them all (~20-25 GB each for the 2B)
-: "${EVAL:=gsm8k}"                 # gsm8k, aime (the recipe's, every 20 rollouts; hours here) or off
-: "${EVAL_EVERY:=10}"              # gsm8k eval interval, in rollouts; it also runs before training
+: "${EVAL:=$([ "$DATASET" = math ] && echo math || echo gsm8k)}"  # gsm8k, math (MATH-500), aime (hours here) or off
+: "${EVAL_EVERY:=10}"              # gsm8k and math eval interval, in rollouts; it also runs before training
 : "${SGLANG_MEM:=0.7}"             # SGLang's share of the 128 GB, for weights and KV cache
 : "${LOW_MEM:=0}"                  # 1: bf16 Adam moments, for models of 2B and up
 : "${MAX_TOKENS_PER_GPU:=9216}"    # training micro-batch budget
@@ -63,7 +63,7 @@ extra="--tensor-model-parallel-size 1 --rollout-max-response-len $MAX_LEN \
 --log-probs-chunk-size $LOGPROB_CHUNK --rm-type $REWARD --save-interval $SAVE_EVERY"
 # explicit both ways: Qwen3's template thinks unless told not to, Qwen3.5's only when told to
 extra+=" --apply-chat-template-kwargs '{\"enable_thinking\": $([ "$THINKING" = on ] && echo true || echo false)}'"
-[ "$DATASET" = gsm8k ] && extra+=" --prompt-data $DATA_ROOT/datasets/gsm8k/train.parquet --input-key messages --label-key label"
+[[ $DATASET == gsm8k || $DATASET == math ]] && extra+=" --prompt-data $DATA_ROOT/datasets/$DATASET/train.parquet --input-key messages --label-key label"
 # Qwen3.5's prefix cache keeps ~3 linear-attention state slots per request, capping concurrency; hits are ~4%
 [[ $MODEL == Qwen3.5-* ]] && extra+=" --sglang-disable-radix-cache"
 [ "$LOW_MEM" = 1 ] && extra+=" --use-precision-aware-optimizer --exp-avg-dtype bf16 --exp-avg-sq-dtype bf16"
@@ -71,7 +71,11 @@ if [ "$EVAL" = gsm8k ]; then
   # a fixed 256-problem slice of the test set: all 1319 take ~13 min per eval on the 0.8B
   eval_data=$DATA_ROOT/datasets/gsm8k/test256.parquet
   [ -f "$eval_data" ] || "$PREFIX/bin/python" -c "import pandas as pd; pd.read_parquet('$DATA_ROOT/datasets/gsm8k/test.parquet').head(256).to_parquet('$eval_data')"
-  extra+=" --eval-interval $EVAL_EVERY --eval-prompt-data gsm8k $eval_data --eval-input-key messages --eval-label-key label \
+elif [ "$EVAL" = math ]; then
+  eval_data=$DATA_ROOT/datasets/math/test500.parquet
+fi
+if [[ $EVAL == gsm8k || $EVAL == math ]]; then
+  extra+=" --eval-interval $EVAL_EVERY --eval-prompt-data $EVAL $eval_data --eval-input-key messages --eval-label-key label \
 --n-samples-per-eval-prompt 1 --eval-max-response-len $MAX_LEN"
 fi
 
