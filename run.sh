@@ -54,6 +54,7 @@ esac
 : "${LOW_MEM:=0}"                  # 1: bf16 Adam moments, for models of 2B and up
 : "${MAX_TOKENS_PER_GPU:=9216}"    # training micro-batch budget
 : "${LOGPROB_CHUNK:=4096}"         # unchunked, one 16k sequence over a 248k vocab is 15 GiB of fp32 logits
+: "${POST_LOGPROBS:=1}"            # 1: also dump log-probs after each update (one more forward pass, ~6% at 16k)
 # deepscaler grades only text after </think>, which with thinking off is in the prompt
 : "${REWARD:=$([ "$THINKING" = on ] && echo deepscaler || echo math)}"
 OUTPUT_DIR=${OUTPUT_DIR:-$DATA_ROOT/runs/$preset}
@@ -67,6 +68,7 @@ extra+=" --apply-chat-template-kwargs '{\"enable_thinking\": $([ "$THINKING" = o
 [[ $DATASET == gsm8k || $DATASET == math ]] && extra+=" --prompt-data $DATA_ROOT/datasets/$DATASET/train.parquet --input-key messages --label-key label"
 # Qwen3.5's prefix cache keeps ~3 linear-attention state slots per request, capping concurrency; hits are ~4%
 [[ $MODEL == Qwen3.5-* ]] && extra+=" --sglang-disable-radix-cache"
+[ "$POST_LOGPROBS" = 1 ] && extra+=" --save-post-update-log-probs"
 [ "$LOW_MEM" = 1 ] && extra+=" --use-precision-aware-optimizer --exp-avg-dtype bf16 --exp-avg-sq-dtype bf16"
 if [ "$EVAL" = gsm8k ]; then
   # a fixed 256-problem slice of the test set: all 1319 take ~13 min per eval on the 0.8B

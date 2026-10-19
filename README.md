@@ -25,7 +25,7 @@ The `quickstart` preset is the upstream recipe, differing only in model size, GP
 
 ## Usage
 
-The installer clones the sources into `./miles-src` and builds a venv in `./.venv`. Miles comes from the `dgx-spark` branch of [our fork](https://github.com/belambert/miles/tree/dgx-spark), which adds single-GPU Qwen3-0.6B, Qwen3.5-0.8B and Qwen3.5-2B recipes, a Qwen3.5-2B model config, and `--attention-backend` and `--dump-details` flags to `scripts/run_qwen3_dense.py`. The installer needs the pinned `radixark/miles` Docker image pulled locally, because a few compiled packages are copied out of it.
+The installer clones the sources into `./miles-src` and builds a venv in `./.venv`. Miles comes from the `dgx-spark` branch of [our fork](https://github.com/belambert/miles/tree/dgx-spark), which adds single-GPU Qwen3-0.6B, Qwen3-1.7B, Qwen3.5-0.8B and Qwen3.5-2B recipes, a Qwen3.5-2B model config, and `--attention-backend` and `--dump-details` flags to `scripts/run_qwen3_dense.py`, plus `--save-post-update-log-probs` and two dashboard views of it (below). The installer needs the pinned `radixark/miles` Docker image pulled locally, because a few compiled packages are copied out of it.
 
     ./install.sh 2>&1 | tee install.log
 
@@ -89,6 +89,10 @@ By default each GSM8K run (`EVAL=gsm8k`) scores the model on a fixed 256-problem
 Each preset writes to `runs/<preset>` and resumes from the checkpoint there, so a finished run won't train again; delete its directory to start over, for example `rm -rf runs/qwen35-2b`, or set `OUTPUT_DIR`. Checkpoints are saved every `SAVE_EVERY` rollouts (default 20) and never deleted, so raise it for long runs, for example `SAVE_EVERY=50 ROLLOUTS=200 ./run.sh qwen35-2b`. A checkpoint with optimizer state is about 8 GB for the 0.6B, 22 GB for the 2B and 50–60 GB for the 4B. Each run also saves every rollout's samples in `runs/<preset>/dump_details/rollout_data/<rollout>.pt`, so you can read what the model wrote:
 
     PYTHONPATH=miles-src/miles .venv/bin/python -c "import torch; s = torch.load('runs/qwen35-2b/dump_details/rollout_data/0.pt', weights_only=False)['samples'][0]; print(s['reward'], s['status'], s['response'])"
+
+The trainer's side is in `train_data/<rollout>_0.pt`: per-token `log_probs` before the update, `ref_log_probs` under the base model, and, unless `POST_LOGPROBS=0`, `post_log_probs` for the same tokens after the update, at the cost of one more forward pass (about 6% of an iteration at 16k). Miles' dashboard reads all of this; its token view also shows `ref_drift` (`log_probs − ref_log_probs`, how far training has moved each token from the base model) and `step_diff` (`post_log_probs − log_probs`, what that rollout's update did):
+
+    cd miles-src/miles && ../../.venv/bin/python -m miles.dashboard.serve --dump-details ../../runs/qwen35-2b/dump_details --port 7788
 
 Ray's job logs, by contrast, are wiped whenever a new run restarts Ray. Don't send requests to the running SGLang engine to check outputs instead: it releases its GPU memory during each training step, and a request arriving then crashes the run. Set `WANDB_API_KEY` to log to wandb.
 
