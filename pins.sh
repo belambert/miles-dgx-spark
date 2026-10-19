@@ -7,11 +7,11 @@
 # is not its ancestor, so don't swap in a tag. Unlike older refs, this commit has no
 # docker/patch/cu13/; its TE patches only exist baked into the image's build (and the
 # radixark/miles-wheels release it installs).
-# We use the dgx-spark branch of our fork: that commit plus single-GPU Qwen3-0.6B,
-# Qwen3.5-0.8B and Qwen3.5-2B recipes (and a Qwen3.5-2B model config), and --attention-backend and
-# --dump-details flags.
+# We use the dgx-spark branch of our fork: that commit plus single-GPU Qwen3-0.6B/1.7B,
+# Qwen3.5-0.8B and Qwen3.5-2B recipes (and a Qwen3.5-2B model config), --attention-backend and
+# --dump-details flags, --save-post-update-log-probs, and the dashboard's ref_drift and step_diff.
 MILES_REPO=${MILES_REPO:-https://github.com/belambert/miles.git}
-MILES_REF=${MILES_REF:-e54b46912a}            # dgx-spark, on top of e1a791d3e3 (/root/miles in the image)
+MILES_REF=${MILES_REF:-a86239f3a5}            # dgx-spark, on top of e1a791d3e3 (/root/miles in the image)
 SGLANG_COMMIT=${SGLANG_COMMIT:-74bd569} # sglang-miles branch on sgl-project/sglang
 MEGATRON_COMMIT=${MEGATRON_COMMIT:-9df207fd1} # radixark/Megatron-LM, miles-main
 TMS_COMMIT=b5588e83de86412a48689a6583a4b567e75f7acc      # torch_memory_saver
