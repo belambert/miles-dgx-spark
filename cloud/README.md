@@ -49,7 +49,7 @@ Install CUDA 13 (skipped if the image already has it) and build the venv and sou
 Point `DATA_ROOT` at the volume, then download and convert a model and train:
 
     export DATA_ROOT=/workspace/miles-data
-    ./run.sh prepare Qwen3.5-2B
+    ./prepare.sh Qwen3.5-2B
     ./run.sh qwen35-2b
 
 Runs go to `$DATA_ROOT/runs/<preset>`, and resume from there. To skip the install the next time the pod starts, take a snapshot (below).

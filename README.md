@@ -52,9 +52,13 @@ This walks through GRPO on Qwen3.5-2B, the largest model that trains on one Spar
 
 The `zhuzilin` copies are what Miles' recipes download: GSM8K with a chat-format `messages` column and a system prompt asking for `\boxed{}`; DAPO-Math-17k deduplicated from 1.79M rows (each problem repeated about 100 times) to 17,398, with prompts asking for `Answer: \boxed{...}` instead of `Answer: ...`; and AIME-2024 with each of the 30 problems once instead of 32 times.
 
+[MATH](https://arxiv.org/abs/2103.03874), harder than GSM8K and easier than dapo, isn't on the `zhuzilin` account, and the original `hendrycks/competition_math` was taken down from Hugging Face. `prepare-math.py` builds it in the same format into `datasets/math/` from mirrors pinned to a commit: 7,471 training problems labeled with their solution's `\boxed{}` answer (29 without one clear answer are dropped), and MATH-500 for evals. `--push <repo>` also uploads it to a private dataset repo. `run.sh` doesn't train on it yet.
+
+    .venv/bin/python prepare-math.py
+
 Download the model and the datasets, and convert the model to Megatron's `torch_dist` format. The rollout engine reads the Hugging Face copy, so both are kept (8 GB for the 2B). The conversion needs the GPU, so stop any running job first:
 
-    ./run.sh prepare Qwen3.5-2B
+    ./prepare.sh Qwen3.5-2B
 
 Then train:
 
@@ -66,7 +70,7 @@ This runs 20 rollouts of 8 GSM8K problems with 8 answers each, without thinking 
 
 For a faster end-to-end check, about 20 minutes, use Qwen3-0.6B:
 
-    ./run.sh prepare Qwen3-0.6B
+    ./prepare.sh Qwen3-0.6B
     ./run.sh qwen3
 
 `run.sh` launches Miles' `scripts/run_qwen3_dense.py` with the preset's settings. Each preset is one line near the top of the script, and any setting (`MODEL`, `DATASET`, `THINKING`, `MAX_LEN`, `PROMPTS`, `ROLLOUTS`, `EVAL`, `SGLANG_MEM`, `REWARD`, ...) can be overridden from the environment, for example `MAX_LEN=8192 ./run.sh qwen35-2b` or `DATASET=dapo ./run.sh qwen35-4b`. Arguments after the preset go to the launcher. The first line it prints sums up the run. Every rollout has 8 samples per prompt.

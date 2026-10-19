@@ -2,8 +2,8 @@
 # GRPO with Miles on one DGX Spark: picks a preset, then launches scripts/run_qwen3_dense.py.
 #
 #   ./run.sh <preset> [launcher args...]     train; writes to runs/<preset> and resumes from there
-#   ./run.sh prepare <model>                 download a model and the datasets, convert to torch_dist
 #   MAX_LEN=8192 ./run.sh qwen35-2b          any setting below can be overridden from the environment
+# Run ./prepare.sh <model> first to download the model and datasets.
 #
 # Presets train on GSM8K without thinking and score a fixed GSM8K test slice every 10 rollouts, except
 # quickstart and full (see README, Measurements, for how each has done).
@@ -23,24 +23,10 @@ DATA_ROOT=${DATA_ROOT:-$HERE}  # holds models/, datasets/ and runs/; put it on a
 
 usage() { sed -n '3,/^set -euo/p' "$0" | sed '$d; s/^# \{0,1\}//'; exit 1; }
 
-prepare() {
-  local model=$1
-  source "$PREFIX/bin/activate"
-  hf download "Qwen/$model" --local-dir "$DATA_ROOT/models/$model"
-  for ds in dapo-math-17k aime-2024 gsm8k; do
-    hf download --repo-type dataset "zhuzilin/$ds" --local-dir "$DATA_ROOT/datasets/$ds"
-  done
-  # needs the GPU free: stop any running job first
-  cd "$SRC/miles"
-  PYTHONPATH="$SRC/Megatron-LM" python tools/convert_hf_to_torch_dist.py \
-    $(python miles/utils/external_utils/model_args_utils.py "${model/Qwen/qwen}") \
-    --hf-checkpoint "$DATA_ROOT/models/$model" --save "$DATA_ROOT/models/${model}_torch_dist"
-}
-
 preset=${1:-}
 [ -n "$preset" ] || usage
 shift
-[ "$preset" = prepare ] && { prepare "${1:?usage: ./run.sh prepare <model>}"; exit; }
+[ "$preset" = prepare ] && { echo "prepare moved to its own script: ./prepare.sh <model>" >&2; exit 1; }
 
 # preset settings; values already set in the environment win
 case $preset in
