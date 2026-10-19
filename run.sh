@@ -6,13 +6,13 @@
 # Run ./prepare.sh <model> first to download the model and datasets.
 #
 # Presets train on GSM8K without thinking and score a fixed GSM8K test slice every 10 rollouts, except
-# quickstart and full (see README, Measurements, for how each has done).
+# quickstart, full and qwen35-2b (see README, Measurements, for how each has done).
 #   quickstart  the upstream recipe on Qwen3-0.6B: dapo-math, thinking, 8k, 32 prompts, 3000 rollouts,
 #               AIME eval; hours per rollout here
 #   full        quickstart for 20 rollouts without eval; overflows the KV cache, 40+ min per rollout
 #   qwen3       Qwen3-0.6B, 2k                                 the fast end-to-end check
 #   qwen35-1b   Qwen3.5-0.8B, 4k
-#   qwen35-2b   Qwen3.5-2B, 4k, low-memory optimizer
+#   qwen35-2b   Qwen3.5-2B on MATH, thinking, 16k, low-memory optimizer, MATH-500 eval every 20 rollouts
 #   qwen35-4b   Qwen3.5-4B, 4k, low-memory optimizer; runs out of memory in its first step
 set -euo pipefail
 
@@ -35,7 +35,7 @@ case $preset in
   qwen3)      ;;
   qwen35-1b)  : "${MODEL:=Qwen3.5-0.8B}" "${MAX_LEN:=4096}" ;;
   # 0.5 left too little memory to save a checkpoint with thinking at 16k
-  qwen35-2b)  : "${MODEL:=Qwen3.5-2B}" "${MAX_LEN:=4096}" "${SGLANG_MEM:=0.4}" "${LOW_MEM:=1}" ;;
+  qwen35-2b)  : "${MODEL:=Qwen3.5-2B}" "${DATASET:=math}" "${THINKING:=on}" "${MAX_LEN:=16384}" "${EVAL_EVERY:=20}" "${SGLANG_MEM:=0.4}" "${LOW_MEM:=1}" ;;
   qwen35-4b)  : "${MODEL:=Qwen3.5-4B}" "${MAX_LEN:=4096}" "${SGLANG_MEM:=0.3}" "${LOW_MEM:=1}" "${MAX_TOKENS_PER_GPU:=4096}" "${LOGPROB_CHUNK:=2048}" ;;
   *)          usage ;;
 esac

@@ -50,6 +50,7 @@ Point `DATA_ROOT` at the volume, then download and convert a model and train:
 
     export DATA_ROOT=/workspace/miles-data
     ./prepare.sh Qwen3.5-2B
+    .venv/bin/python prepare-math.py
     ./run.sh qwen35-2b
 
 Runs go to `$DATA_ROOT/runs/<preset>`, and resume from there. To skip the install the next time the pod starts, take a snapshot (below).
