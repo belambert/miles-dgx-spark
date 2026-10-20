@@ -62,7 +62,9 @@ OUTPUT_DIR=${OUTPUT_DIR:-$DATA_ROOT/runs/$preset}
 extra="--tensor-model-parallel-size 1 --rollout-max-response-len $MAX_LEN \
 --rollout-batch-size $PROMPTS --global-batch-size $((PROMPTS * 8)) \
 --sglang-mem-fraction-static $SGLANG_MEM --max-tokens-per-gpu $MAX_TOKENS_PER_GPU \
---log-probs-chunk-size $LOGPROB_CHUNK --rm-type $REWARD --save-interval $SAVE_EVERY"# explicit both ways: Qwen3's template thinks unless told not to, Qwen3.5's only when told to
+--log-probs-chunk-size $LOGPROB_CHUNK --rm-type $REWARD --save-interval $SAVE_EVERY"
+# the LR is constant, but Megatron refuses a checkpoint saved with another ROLLOUTS unless told to ignore its schedule
+extra+=" --override-opt_param-scheduler"# explicit both ways: Qwen3's template thinks unless told not to, Qwen3.5's only when told to
 extra+=" --apply-chat-template-kwargs '{\"enable_thinking\": $([ "$THINKING" = on ] && echo true || echo false)}'"
 [[ $DATASET == gsm8k || $DATASET == math* ]] && extra+=" --prompt-data $DATA_ROOT/datasets/$DATASET/train.parquet --input-key messages --label-key label"
 # Qwen3.5's prefix cache keeps ~3 linear-attention state slots per request, capping concurrency; hits are ~4%
