@@ -42,13 +42,13 @@ esac
 
 # defaults
 : "${MODEL:=Qwen3-0.6B}"           # a --model-name of run_qwen3_dense.py
-: "${DATASET:=gsm8k}"              # gsm8k, math (from prepare-math.py) or dapo (the recipe's; too hard under 4B)
+: "${DATASET:=gsm8k}"              # gsm8k, math or math-* (from prepare-math.py) or dapo (the recipe's; too hard under 4B)
 : "${THINKING:=off}"               # Qwen's chat-template thinking; on needs 8k+ and is ~10x slower
 : "${MAX_LEN:=2048}"               # response cap in tokens
 : "${PROMPTS:=8}"                  # prompts per rollout, 8 samples each
 : "${ROLLOUTS:=20}"
 : "${SAVE_EVERY:=20}"              # rollouts per checkpoint; Miles keeps them all (~20-25 GB each for the 2B)
-: "${EVAL:=$([ "$DATASET" = math ] && echo math || echo gsm8k)}"  # gsm8k, math (MATH-500), aime (hours here) or off
+: "${EVAL:=$([[ $DATASET == math* ]] && echo math || echo gsm8k)}"  # gsm8k, math (MATH-500), aime (hours here) or off
 : "${EVAL_EVERY:=10}"              # gsm8k and math eval interval, in rollouts; it also runs before training
 : "${SGLANG_MEM:=0.7}"             # SGLang's share of the 128 GB, for weights and KV cache
 : "${LOW_MEM:=0}"                  # 1: bf16 Adam moments, for models of 2B and up
@@ -62,10 +62,9 @@ OUTPUT_DIR=${OUTPUT_DIR:-$DATA_ROOT/runs/$preset}
 extra="--tensor-model-parallel-size 1 --rollout-max-response-len $MAX_LEN \
 --rollout-batch-size $PROMPTS --global-batch-size $((PROMPTS * 8)) \
 --sglang-mem-fraction-static $SGLANG_MEM --max-tokens-per-gpu $MAX_TOKENS_PER_GPU \
---log-probs-chunk-size $LOGPROB_CHUNK --rm-type $REWARD --save-interval $SAVE_EVERY"
-# explicit both ways: Qwen3's template thinks unless told not to, Qwen3.5's only when told to
+--log-probs-chunk-size $LOGPROB_CHUNK --rm-type $REWARD --save-interval $SAVE_EVERY"# explicit both ways: Qwen3's template thinks unless told not to, Qwen3.5's only when told to
 extra+=" --apply-chat-template-kwargs '{\"enable_thinking\": $([ "$THINKING" = on ] && echo true || echo false)}'"
-[[ $DATASET == gsm8k || $DATASET == math ]] && extra+=" --prompt-data $DATA_ROOT/datasets/$DATASET/train.parquet --input-key messages --label-key label"
+[[ $DATASET == gsm8k || $DATASET == math* ]] && extra+=" --prompt-data $DATA_ROOT/datasets/$DATASET/train.parquet --input-key messages --label-key label"
 # Qwen3.5's prefix cache keeps ~3 linear-attention state slots per request, capping concurrency; hits are ~4%
 [[ $MODEL == Qwen3.5-* ]] && extra+=" --sglang-disable-radix-cache"
 [ "$POST_LOGPROBS" = 1 ] && extra+=" --save-post-update-log-probs"

@@ -53,7 +53,7 @@ This walks through GRPO on Qwen3.5-2B, the largest model that trains on one Spar
 
 The `zhuzilin` copies are what Miles' recipes download: GSM8K with a chat-format `messages` column and a system prompt asking for `\boxed{}`; DAPO-Math-17k deduplicated from 1.79M rows (each problem repeated about 100 times) to 17,398, with prompts asking for `Answer: \boxed{...}` instead of `Answer: ...`; and AIME-2024 with each of the 30 problems once instead of 32 times.
 
-[MATH](https://arxiv.org/abs/2103.03874), harder than GSM8K and easier than dapo, isn't on the `zhuzilin` account, and the original `hendrycks/competition_math` was taken down from Hugging Face. `prepare-math.py` builds it in the same format into `datasets/math/` from mirrors pinned to a commit: 7,471 training problems labeled with their solution's `\boxed{}` answer (29 without one clear answer are dropped), and MATH-500 for evals. `--push <repo>` also uploads it to a private dataset repo. `DATASET=math` trains on it and switches the eval to MATH-500. Both graders accept equivalent LaTeX answers (`0.5` for `\frac{1}{2}`, `\sqrt{12}` for `2\sqrt{3}`) and grade all 500 reference solutions correct, but not lists in another order.
+[MATH](https://arxiv.org/abs/2103.03874), harder than GSM8K and easier than dapo, isn't on the `zhuzilin` account, and the original `hendrycks/competition_math` was taken down from Hugging Face. `prepare-math.py` builds it in the same format into `datasets/math/` from mirrors pinned to a commit: 7,471 training problems labeled with their solution's `\boxed{}` answer (29 without one clear answer are dropped), and MATH-500 for evals. `--push <repo>` also uploads it to a private dataset repo. `DATASET=math` trains on it and switches the eval to MATH-500. `--min-level 5 --out datasets/math-l5` keeps only the 2,293 hardest problems, for `DATASET=math-l5`; once the 2B has trained on all of MATH, about 80% of easier problems get the same reward on all 8 answers and teach GRPO nothing. Both graders accept equivalent LaTeX answers (`0.5` for `\frac{1}{2}`, `\sqrt{12}` for `2\sqrt{3}`) and grade all 500 reference solutions correct, but not lists in another order.
 
 Download the model and the datasets, and convert the model to Megatron's `torch_dist` format. The rollout engine reads the Hugging Face copy, so both are kept (8 GB for the 2B). The conversion needs the GPU, so stop any running job first. Then build MATH:
 
@@ -86,7 +86,15 @@ By default each GSM8K run (`EVAL=gsm8k`) scores the model on a fixed 256-problem
 | `qwen35-2b`  | Qwen3.5-2B   | MATH  | on       | 16384        | 8       | MATH-500 eval every 20 rollouts; 0.34 → 0.79 over 60 rollouts                      |
 | `qwen35-4b`  | Qwen3.5-4B   | GSM8K | off      | 4096         | 8       | Out of memory in its first optimizer step (on dapo)                                |
 
-Each preset writes to `runs/<preset>` and resumes from the checkpoint there, so a finished run won't train again; delete its directory to start over, for example `rm -rf runs/qwen35-2b`, or set `OUTPUT_DIR`. Checkpoints are saved every `SAVE_EVERY` rollouts (default 20) and never deleted, so raise it for long runs, for example `SAVE_EVERY=50 ROLLOUTS=200 ./run.sh qwen35-2b`. A checkpoint with optimizer state is about 8 GB for the 0.6B, 22 GB for the 2B and 50–60 GB for the 4B. Each run also saves every rollout's samples in `runs/<preset>/dump_details/rollout_data/<rollout>.pt`, so you can read what the model wrote:
+Each preset writes to `runs/<preset>` and resumes from the checkpoint there, so a finished run won't train again; delete its directory to start over, for example `rm -rf runs/qwen35-2b`, or set `OUTPUT_DIR`. Raising `ROLLOUTS` continues a finished run. To continue from another run's checkpoint on other data, here rollout 59 of the 2B on level-5 MATH for 60 more rollouts (`ROLLOUTS` counts from the start), link it into a new directory:
+
+    mkdir -p runs/qwen35-2b-l5/checkpoints/rollout
+    ln -s ../../qwen35-2b/checkpoints/iter_0000059 runs/qwen35-2b-l5/checkpoints/
+    cp runs/qwen35-2b/checkpoints/latest_checkpointed_iteration.txt runs/qwen35-2b-l5/checkpoints/
+    cp -r runs/qwen35-2b/checkpoints/rollout/59 runs/qwen35-2b-l5/checkpoints/rollout/
+    DATASET=math-l5 ROLLOUTS=120 OUTPUT_DIR=$PWD/runs/qwen35-2b-l5 ./run.sh qwen35-2b
+
+ Checkpoints are saved every `SAVE_EVERY` rollouts (default 20) and never deleted, so raise it for long runs, for example `SAVE_EVERY=50 ROLLOUTS=200 ./run.sh qwen35-2b`. A checkpoint with optimizer state is about 8 GB for the 0.6B, 22 GB for the 2B and 50–60 GB for the 4B. Each run also saves every rollout's samples in `runs/<preset>/dump_details/rollout_data/<rollout>.pt`, so you can read what the model wrote:
 
     PYTHONPATH=miles-src/miles .venv/bin/python -c "import torch; s = torch.load('runs/qwen35-2b/dump_details/rollout_data/0.pt', weights_only=False)['samples'][0]; print(s['reward'], s['status'], s['response'])"
 

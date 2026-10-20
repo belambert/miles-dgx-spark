@@ -2,6 +2,7 @@
 
     .venv/bin/python prepare-math.py                         # writes datasets/math/
     .venv/bin/python prepare-math.py --push blambert/math    # also uploads it, as a private dataset
+    .venv/bin/python prepare-math.py --min-level 5 --out datasets/math-l5   # only the hardest problems
 
 Training data is MATH's 7,500-problem train split, with the last \\boxed{} of each solution as the
 label; evals use MATH-500, the standard 500-problem subset of its test split. Both come from mirrors
@@ -29,16 +30,18 @@ def main() -> None:
     root = Path(os.environ.get("DATA_ROOT", Path(__file__).resolve().parent))
     ap.add_argument("--out", type=Path, default=root / "datasets" / "math")
     ap.add_argument("--push", metavar="REPO", help="upload to this private HF dataset repo")
+    ap.add_argument("--min-level", type=int, default=1, help="keep only training problems of this level (1-5) and up")
     args = ap.parse_args()
 
     train, test = load_train(), load_test()
+    train = train[train.level >= args.min_level].reset_index(drop=True)
     overlap = set(train.question) & set(test.question)
     assert not overlap, f"{len(overlap)} MATH-500 problems are in the train split"
 
     args.out.mkdir(parents=True, exist_ok=True)
     train.to_parquet(args.out / "train.parquet")
     test.to_parquet(args.out / "test500.parquet")
-    (args.out / "README.md").write_text(card(train, test))
+    (args.out / "README.md").write_text(card(train, test, args.min_level))
     print(f"wrote {len(train)} train and {len(test)} test problems to {args.out}")
     print(train.groupby(["level"]).size().to_string())
 
@@ -106,7 +109,8 @@ def with_messages(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def card(train: pd.DataFrame, test: pd.DataFrame) -> str:
+def card(train: pd.DataFrame, test: pd.DataFrame, min_level: int) -> str:
+    levels = "" if min_level == 1 else f" of level {min_level} and up"
     return f"""---
 configs:
 - config_name: default
@@ -124,7 +128,7 @@ MATH in the format of [zhuzilin/gsm8k](https://huggingface.co/datasets/zhuzilin/
 for `\\boxed{{}}`, and the answer in `label`. Built by `prepare-math.py` in
 [miles-dgx-spark](https://github.com/belambert/miles-dgx-spark).
 
-- **train:** {len(train)} problems from MATH's train split, via
+- **train:** {len(train)} problems{levels} from MATH's train split, via
   [{TRAIN_REPO}](https://huggingface.co/datasets/{TRAIN_REPO}) at `{TRAIN_REV[:10]}`. The label is the
   solution's `\\boxed{{}}` answer; problems whose solution has none, an empty one, or several different
   ones are dropped.
