@@ -64,7 +64,7 @@ Then train:
 
     ./run.sh qwen35-2b
 
-This runs 20 rollouts of 8 MATH problems with 8 answers each, thinking with answers capped at 16k tokens, and scores MATH-500 before training and every 20 rollouts. It hasn't been timed on MATH yet. On GSM8K with the same settings, iterations took about 20 minutes while the base model still thought to the cap and 8 minutes once training had cut its answers short, and a 256-problem eval took 41 minutes before training, so expect hours per MATH-500 eval at first. For runs longer than 20 rollouts, raise `ROLLOUTS` (checkpoints come every 20). For the GSM8K run without thinking from the Measurements, about 2.5 minutes per iteration, rising from 0.77 to 0.85–0.91 over 200 rollouts:
+This runs 20 rollouts of 8 MATH problems with 8 answers each, thinking with answers capped at 16k tokens, and scores MATH-500 before training and every 20 rollouts. Iterations take about 25 minutes at first and 13 once training has cut its answers short, and a MATH-500 eval takes 94 minutes before training and 39 after 60 rollouts, so these 20 rollouts take about 10 hours. For runs longer than 20 rollouts, raise `ROLLOUTS` (checkpoints come every 20); 60 rollouts took 23 hours and raised MATH-500 from 0.34 to 0.79 (see Measurements). For the GSM8K run without thinking from the Measurements, about 2.5 minutes per iteration, rising from 0.77 to 0.85–0.91 over 200 rollouts:
 
     DATASET=gsm8k THINKING=off MAX_LEN=4096 EVAL_EVERY=10 SAVE_EVERY=50 ROLLOUTS=200 ./run.sh qwen35-2b
 
@@ -83,7 +83,7 @@ By default each GSM8K run (`EVAL=gsm8k`) scores the model on a fixed 256-problem
 | `full`       | Qwen3-0.6B   | dapo  | on       | 8192         | 32      | `quickstart` for 20 rollouts, no eval; overflows the KV cache, 40+ min per rollout |
 | `qwen3`      | Qwen3-0.6B   | GSM8K | off      | 2048         | 8       | The fast end-to-end check                                                          |
 | `qwen35-1b`  | Qwen3.5-0.8B | GSM8K | off      | 4096         | 8       | ~1 min per iteration at 2k, reward 0.28–0.66                                       |
-| `qwen35-2b`  | Qwen3.5-2B   | MATH  | on       | 16384        | 8       | MATH-500 eval every 20 rollouts; not yet run on MATH                               |
+| `qwen35-2b`  | Qwen3.5-2B   | MATH  | on       | 16384        | 8       | MATH-500 eval every 20 rollouts; 0.34 → 0.79 over 60 rollouts                      |
 | `qwen35-4b`  | Qwen3.5-4B   | GSM8K | off      | 4096         | 8       | Out of memory in its first optimizer step (on dapo)                                |
 
 Each preset writes to `runs/<preset>` and resumes from the checkpoint there, so a finished run won't train again; delete its directory to start over, for example `rm -rf runs/qwen35-2b`, or set `OUTPUT_DIR`. Checkpoints are saved every `SAVE_EVERY` rollouts (default 20) and never deleted, so raise it for long runs, for example `SAVE_EVERY=50 ROLLOUTS=200 ./run.sh qwen35-2b`. A checkpoint with optimizer state is about 8 GB for the 0.6B, 22 GB for the 2B and 50–60 GB for the 4B. Each run also saves every rollout's samples in `runs/<preset>/dump_details/rollout_data/<rollout>.pt`, so you can read what the model wrote:
@@ -116,7 +116,7 @@ The Ray dashboard listens only on the Spark's localhost, port 8265. To view it f
 
 ## Measurements
 
-Runs on one Spark (2026-10-17 and 18), with the TE patch unless noted, mostly from before GSM8K and no thinking became the defaults. "KL" is `train/train_rollout_kl`, the gap between SGLang's and Megatron's log-probs for the same tokens; near zero means training sees the same model SGLang sampled from. Reward is the fraction of answers graded correct per rollout.
+Runs on one Spark (2026-10-17 to 19), with the TE patch unless noted, mostly from before GSM8K and no thinking became the defaults. "KL" is `train/train_rollout_kl`, the gap between SGLang's and Megatron's log-probs for the same tokens; near zero means training sees the same model SGLang sampled from. Reward is the fraction of answers graded correct per rollout.
 
 | Data  | Model        | Samples | Max response | Thinking | Rollout                      | Train step | Mean response | Truncated | Reward         | KL     |
 |-------|--------------|---------|--------------|----------|------------------------------|------------|---------------|-----------|----------------|--------|
@@ -129,6 +129,7 @@ Runs on one Spark (2026-10-17 and 18), with the TE patch unless noted, mostly fr
 | GSM8K | Qwen3.5-2B   | 64      | 4096         | off      | 61–102 s                     | 27–59 s    | 504–1357      | 0–19%     | 0.75 → 0.88    | 0.0002 |
 | GSM8K | Qwen3.5-2B   | 64      | 8192         | on       | 5.6–6.2 min                  | 249–283 s  | 6133–7090     | 45–73%    | 0.27–0.55      | 0.0004 |
 | GSM8K | Qwen3.5-2B   | 64      | 16384        | on       | 7.2–14.2 min                 | 175–509 s  | 4286–12667    | 6–58%     | 0.42–0.88      | 0.0004 |
+| MATH  | Qwen3.5-2B   | 64      | 16384        | on       | 7.8–14.3 min                 | 246–612 s  | 5164–12895    | 9–61%     | 0.36–0.88      | 0.0003 |
 
 The 256-sample thinking batch overflows SGLang's KV cache: throughput fell from about 1,700 to 580 tokens/s as requests were evicted and requeued, and the first rollout never finished. Qwen3-0.6B with thinking and 64 samples keeps its answers in the cache (0.7 memory fraction holds about 600k tokens), but throughput still falls from about 1,400 to 300 tokens/s as answers grow, because every decode step reads the whole cache. Without thinking at 2k it runs 20 rollouts in about 20 minutes; its reward stays flat, as expected for so few steps.
 
@@ -143,6 +144,8 @@ On GSM8K the 2B trained for 200 rollouts in 8.7 hours (2026-10-18), including 21
 The single-sample eval is noisy at the problem level: between the first and last evals, 36 of the 256 problems went from wrong to right and 15 from right to wrong, and only 23 were wrong both times. The trained model's 38 misses are 15 answers cut off at 4k, none of them stuck in a loop, and 23 finished answers with a wrong number in `\boxed{}`, none of them a formatting problem.
 
 With thinking on (the last two rows, a 3-rollout probe at 8k and the first 10 rollouts of a 100-rollout run at 16k, 2026-10-18), the 2B scored 0.488 on the GSM8K eval before training, against 0.77 without thinking, because 130 of its 256 answers hit 16k; the eval took 41 minutes. The answers it finished were nearly all right: 125 of 126. The rest weren't stuck either. Only 3 of the 130 cut-off answers loop; 114 state the correct answer (`= 540`, for example) a median 9% of the way in, around token 1,500, then keep second-guessing it. The finished answers do the same, verifying for about 90% of their length. Thinking doesn't crack the problems the non-thinking model misses, though: of its 38 misses, thinking got 2 right and was cut off on 35. Taking the thinking answer where it finished and the non-thinking one elsewhere scores 0.859, about the same as without thinking. In every rollout, reward plus truncation rate is about 1, and training shortens the second-guessing fast: the median answer ran 7,400–12,700 tokens past its first correct conclusion in rollouts 0–5 and about 1,000 in rollouts 8–9, when truncation fell to 6–28%. It does carry over to the fixed eval: after 20 rollouts the GSM8K score was 0.895, with 7% of answers cut off and a median of 1,807 tokens, and after 40 it was 0.871, with 3% cut off and a median of 737, matching the non-thinking run's 0.85–0.91 at shorter answers but not beating it. Iterations sped up from about 20 minutes to 8. That run was killed while saving its first checkpoint, at rollout 49 (see Memory, above).
+
+On MATH with thinking at 16k (the last row, `ROLLOUTS=60 ./run.sh qwen35-2b`, 2026-10-18 and 19), the 2B trained for 60 rollouts in 22.8 hours, 4.1 of them in the four MATH-500 evals (94, 65, 50 and 39 minutes, shrinking with the answers). Iterations took about 25 minutes at first and 13 by the end, and all three checkpoints saved, in about 30 s each. The MATH-500 score rose from 0.336 before training to 0.632 after 20 rollouts, 0.740 after 40 and 0.790 after 60, while the share of answers cut off at 16k fell from 66% to 36%, 24% and 17%, and their mean length from 13,300 tokens to 6,800. As on GSM8K, nearly all of the gain came from finishing: at every eval 96–99% of the finished answers were right, so the score tracks the share that finished. The training reward, averaged over blocks of 20 rollouts, went from 0.49 to 0.68 and 0.78 as truncation fell from 50% to 30% and 19%, and was still rising at rollout 60.
 
 Training-step time by attention backend, on the 64-sample, 2k-token batch with thinking on:
 
