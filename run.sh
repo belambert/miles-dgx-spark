@@ -34,8 +34,9 @@ case $preset in
   full)       : "${DATASET:=dapo}" "${THINKING:=on}" "${MAX_LEN:=8192}" "${PROMPTS:=32}" "${EVAL:=off}" "${SGLANG_MEM:=0.5}" ;;
   qwen3)      ;;
   qwen35-1b)  : "${MODEL:=Qwen3.5-0.8B}" "${MAX_LEN:=4096}" ;;
-  # 0.5 left too little memory to save a checkpoint with thinking at 16k
-  qwen35-2b)  : "${MODEL:=Qwen3.5-2B}" "${DATASET:=math}" "${THINKING:=on}" "${MAX_LEN:=16384}" "${EVAL_EVERY:=20}" "${SGLANG_MEM:=0.4}" "${LOW_MEM:=1}" ;;
+  # 0.5 left too little memory to save a checkpoint with thinking at 16k; 4096-token log-prob chunks
+  # ran out of memory in math-l5's first step
+  qwen35-2b)  : "${MODEL:=Qwen3.5-2B}" "${DATASET:=math}" "${THINKING:=on}" "${MAX_LEN:=16384}" "${EVAL_EVERY:=20}" "${SGLANG_MEM:=0.4}" "${LOW_MEM:=1}" "${LOGPROB_CHUNK:=2048}" ;;
   qwen35-4b)  : "${MODEL:=Qwen3.5-4B}" "${MAX_LEN:=4096}" "${SGLANG_MEM:=0.3}" "${LOW_MEM:=1}" "${MAX_TOKENS_PER_GPU:=4096}" "${LOGPROB_CHUNK:=2048}" ;;
   *)          usage ;;
 esac
