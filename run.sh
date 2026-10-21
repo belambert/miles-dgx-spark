@@ -56,6 +56,7 @@ esac
 : "${MAX_TOKENS_PER_GPU:=9216}"    # training micro-batch budget
 : "${LOGPROB_CHUNK:=4096}"         # unchunked, one 16k sequence over a 248k vocab is 15 GiB of fp32 logits
 : "${POST_LOGPROBS:=1}"            # 1: also dump log-probs after each update (one more forward pass, ~6% at 16k)
+: "${LENGTH_PENALTY:=0}"           # 1: penalize training answers in the last quarter of MAX_LEN (length_penalty.py)
 # deepscaler grades only text after </think>, which with thinking off is in the prompt
 : "${REWARD:=$([ "$THINKING" = on ] && echo deepscaler || echo math)}"
 OUTPUT_DIR=${OUTPUT_DIR:-$DATA_ROOT/runs/$preset}
@@ -73,6 +74,7 @@ extra+=" --apply-chat-template-kwargs '{\"enable_thinking\": $([ "$THINKING" = o
 [[ $MODEL == Qwen3.5-* ]] && extra+=" --sglang-disable-radix-cache"
 [ "$POST_LOGPROBS" = 1 ] && extra+=" --save-post-update-log-probs"
 [ "$LOW_MEM" = 1 ] && extra+=" --use-precision-aware-optimizer --exp-avg-dtype bf16 --exp-avg-sq-dtype bf16"
+[ "$LENGTH_PENALTY" = 1 ] && extra+=" --custom-rm-path length_penalty.reward"
 if [ "$EVAL" = gsm8k ]; then
   # a fixed 256-problem slice of the test set: all 1319 take ~13 min per eval on the 0.8B
   eval_data=$DATA_ROOT/datasets/gsm8k/test256.parquet
@@ -93,6 +95,8 @@ export PATH=$PREFIX/bin:$PATH
 # Ray kills workers at 95% of RAM, which on the Spark's unified memory includes the GPU's; that killed a
 # checkpoint save that swap would have carried
 export RAY_memory_monitor_refresh_ms=${RAY_memory_monitor_refresh_ms:-0}
+# the launcher passes PYTHONPATH on to Ray's workers, which import length_penalty.py from here
+export PYTHONPATH=$HERE${PYTHONPATH:+:$PYTHONPATH}
 cd "$SRC/miles"
 exec "$PREFIX/bin/python" scripts/run_qwen3_dense.py --model-name "$MODEL" --num-gpus-per-node 1 \
   --model-dir "$DATA_ROOT/models" --data-dir "$DATA_ROOT/datasets" --output-dir "$OUTPUT_DIR" \
