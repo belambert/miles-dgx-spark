@@ -34,8 +34,9 @@ case $preset in
   full)       : "${DATASET:=dapo}" "${THINKING:=on}" "${MAX_LEN:=8192}" "${PROMPTS:=32}" "${EVAL:=off}" "${SGLANG_MEM:=0.5}" ;;
   qwen3)      ;;
   qwen35-1b)  : "${MODEL:=Qwen3.5-0.8B}" "${MAX_LEN:=4096}" ;;
-  # 0.5 left too little memory to save a checkpoint with thinking at 16k
-  qwen35-2b)  : "${MODEL:=Qwen3.5-2B}" "${DATASET:=math}" "${THINKING:=on}" "${MAX_LEN:=16384}" "${EVAL_EVERY:=20}" "${SGLANG_MEM:=0.4}" "${LOW_MEM:=1}" ;;
+  # 0.5 left too little memory to save a checkpoint with thinking at 16k; 4096-token log-prob chunks
+  # ran out of memory in math-l5's first step
+  qwen35-2b)  : "${MODEL:=Qwen3.5-2B}" "${DATASET:=math}" "${THINKING:=on}" "${MAX_LEN:=16384}" "${EVAL_EVERY:=20}" "${SGLANG_MEM:=0.4}" "${LOW_MEM:=1}" "${LOGPROB_CHUNK:=2048}" ;;
   qwen35-4b)  : "${MODEL:=Qwen3.5-4B}" "${MAX_LEN:=4096}" "${SGLANG_MEM:=0.3}" "${LOW_MEM:=1}" "${MAX_TOKENS_PER_GPU:=4096}" "${LOGPROB_CHUNK:=2048}" ;;
   *)          usage ;;
 esac
@@ -64,7 +65,8 @@ extra="--tensor-model-parallel-size 1 --rollout-max-response-len $MAX_LEN \
 --sglang-mem-fraction-static $SGLANG_MEM --max-tokens-per-gpu $MAX_TOKENS_PER_GPU \
 --log-probs-chunk-size $LOGPROB_CHUNK --rm-type $REWARD --save-interval $SAVE_EVERY"
 # the LR is constant, but Megatron refuses a checkpoint saved with another ROLLOUTS unless told to ignore its schedule
-extra+=" --override-opt_param-scheduler"# explicit both ways: Qwen3's template thinks unless told not to, Qwen3.5's only when told to
+extra+=" --override-opt_param-scheduler"
+# explicit both ways: Qwen3's template thinks unless told not to, Qwen3.5's only when told to
 extra+=" --apply-chat-template-kwargs '{\"enable_thinking\": $([ "$THINKING" = on ] && echo true || echo false)}'"
 [[ $DATASET == gsm8k || $DATASET == math* ]] && extra+=" --prompt-data $DATA_ROOT/datasets/$DATASET/train.parquet --input-key messages --label-key label"
 # Qwen3.5's prefix cache keeps ~3 linear-attention state slots per request, capping concurrency; hits are ~4%
