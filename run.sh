@@ -56,7 +56,7 @@ esac
 : "${MAX_TOKENS_PER_GPU:=9216}"    # training micro-batch budget
 : "${LOGPROB_CHUNK:=4096}"         # unchunked, one 16k sequence over a 248k vocab is 15 GiB of fp32 logits
 : "${POST_LOGPROBS:=1}"            # 1: also dump log-probs after each update (one more forward pass, ~6% at 16k)
-: "${LENGTH_PENALTY:=0}"           # 1: penalize training answers in the last quarter of MAX_LEN (length_penalty.py)
+: "${LENGTH_PENALTY:=0}"           # 1: correct training answers lose reward with length, half of it at MAX_LEN (length_penalty.py)
 # deepscaler grades only text after </think>, which with thinking off is in the prompt
 : "${REWARD:=$([ "$THINKING" = on ] && echo deepscaler || echo math)}"
 OUTPUT_DIR=${OUTPUT_DIR:-$DATA_ROOT/runs/$preset}
